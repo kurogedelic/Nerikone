@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nerikone</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <div class="grp" id="filebar"></div>
+  <div class="grp center" id="modebar"></div>
+  <div class="grp" id="appbar"></div>
+</header>
+<nav id="tools" class="float" data-float="tools"><div class="fgrip" data-tip="ドラッグで移動"></div><div id="toolsbody"></div></nav>
+<main id="view">
+  <div id="viewlabel"></div>
+  <svg id="navgizmo" width="100" height="100" viewBox="-50 -50 100 100"></svg>
+  <div id="viewbtns"></div>
+  <div id="dialog" hidden></div>
+  <div id="ctxbar" hidden></div>
+  <div id="hud" hidden></div>
+</main>
+<aside id="side" class="float" data-float="side"><div class="fhead"><span><i class="ti ti-list-tree"></i> アウトライナー</span><button data-collapse data-tip="折りたたむ"><i class="ti ti-chevron-down"></i></button></div><div class="fbody" id="outliner"></div></aside>
+<section id="console" class="float" data-float="console" hidden>
+  <div class="chead fhead"><b><i class="ti ti-terminal-2"></i> コンソール</b>
+    <button id="cfilter" data-tip="エラーだけ表示"><i class="ti ti-filter"></i></button>
+    <button id="ccopy" data-tip="すべてコピー"><i class="ti ti-copy"></i></button>
+    <button id="cserver" data-tip="サーバーのエラー履歴をコピー（AI 操作分も含む）"><i class="ti ti-terminal"></i></button>
+    <button id="cclear" data-tip="消去"><i class="ti ti-clear-all"></i></button>
+    <button id="cclose" data-tip="閉じる"><i class="ti ti-x"></i></button></div>
+  <div id="clog"></div>
+</section>
+<footer id="timelinebar" class="float" data-float="timeline"><div class="fgrip v" data-tip="ドラッグで移動"></div><div id="timeline"></div><button id="consolebtn" data-tip="コンソール" data-key="`"><i class="ti ti-terminal-2"></i><span class="badge"></span></button></footer>
+<div id="status"></div>
+<div id="toast"></div>
+<div id="menu" hidden></div>
+<div id="palette" hidden><div class="pin"><i class="ti ti-search"></i><input id="pq" placeholder="コマンドを検索"></div><div id="plist"></div></div>
+<div id="modal" hidden></div>
+<input type="file" id="file" accept=".step,.stp,.stl,.wrl,.wrz,.nrk" hidden>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

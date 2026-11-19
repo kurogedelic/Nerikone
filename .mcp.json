@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "nerikone": {
+      "command": ".venv/bin/python",
+      "args": ["nerikone/mcp_server.py"]
+    }
+  }
+}

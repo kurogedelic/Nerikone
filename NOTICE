@@ -1,0 +1,21 @@
+Nerikone
+Copyright 2026 The Nerikone Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It uses, as a dependency (not included in this repository):
+
+  smlibpy - Copyright (c) 2026 AWV Informatik AG - MIT License
+    which includes the SMLib solid modeling kernel from USD BRep:
+    USD BRep - Copyright (c) 2020-2026, NVIDIA CORPORATION & AFFILIATES - Apache License 2.0
+    https://github.com/NVIDIA-Omniverse/usd-brep
+
+The web viewer loads, from a CDN (not included in this repository):
+
+  three.js - Copyright (c) 2010-2023 three.js authors - MIT License
+  Tabler Icons - Copyright (c) 2020-2024 Paweł Kuna - MIT License
+
+The Python MCP server depends on the MCP Python SDK - Copyright (c) 2024 Anthropic, PBC - MIT License.
+
+Product and company names are the trademarks of their respective owners. Nerikone is an independent
+project and is not affiliated with or endorsed by any of them.
