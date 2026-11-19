@@ -760,9 +760,21 @@ A('edit.duplicate', '複製', '編集', async () => {
   S.mode = 'body'; S.sel = {faces: [], edges: [], bodies: made}; refresh(); transformModal('grab');
 });
 A('edit.delete', '削除', '編集', async () => {
-  if (S.sel.bodies.length) { for (const b of [...S.sel.bodies]) await commit('body.delete', {body: b}); }
-  else if (S.feature) updateFeature(S.feature, null, {delete: true});
+  if (S.sel.bodies.length) { for (const b of [...S.sel.bodies]) await commit('body.delete', {body: b}); return; }
+  if (S.sel.faces.length || S.sel.edges.length) return deleteMenu(); // like other 3D tools: ask what to delete
+  if (S.feature) updateFeature(S.feature, null, {delete: true});
 });
+function deleteMenu() {
+  const bodies = selBodies(), faces = [...S.sel.faces];
+  const items = [{icon: 'trash', label: bodies.length > 1 ? `ボディを削除（${bodies.length} 個）` : `ボディを削除（${bodies[0]}）`,
+    run: async () => { for (const b of bodies) await commit('body.delete', {body: b}); }}];
+  if (faces.length && faces.every(f => S.doc.bodies[f.body]?.kind === 'Part')) {
+    const byBody = {}; for (const f of faces) (byBody[f.body] ||= []).push(f.point);
+    items.push({icon: 'close', label: `面を削除して周りでふさぐ（${faces.length} 面）`,
+      run: async () => { for (const [b, pts] of Object.entries(byBody)) await commit('face.delete', {body: b, faces: pts}); }});
+  }
+  showMenu(S.mouse?.x ?? innerWidth / 2, S.mouse?.y ?? innerHeight / 2, [{header: '削除'}, ...items]);
+}
 for (const [k, l] of [['union', '結合'], ['cut', '切り抜き'], ['intersect', '交差']])
   A('bool.' + k, `ブーリアン: ${l}`, '編集', () => {
     if (S.sel.bodies.length < 2) return toast('2 つ以上のボディを選択してください（最初に選んだものが対象）');
@@ -932,12 +944,32 @@ async function download(fmt) {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   } catch (err) { reportError(err.message, '書き出し'); }
 }
-$('file').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  try { S.framed = false; applyState(await req('POST', '/api/import?filename=' + encodeURIComponent(f.name), await f.arrayBuffer(), true)); toast(`${f.name} を読み込みました`); }
-  catch (err) { reportError(err.message, '読み込み'); }
-  e.target.value = '';
-};
+const IMPORTABLE = /\.(step|stp|stl|wrl|wrz|vrml|nrk)$/i;
+async function importFiles(files) {
+  for (const f of files) {
+    if (!IMPORTABLE.test(f.name)) { reportError(`${f.name}: 読み込めない形式です（STEP / STL / WRL / .nrk）`, '読み込み'); continue; }
+    try {
+      S.framed = false;
+      applyState(await req('POST', '/api/import?filename=' + encodeURIComponent(f.name), await f.arrayBuffer(), true));
+      toast(`${f.name} を読み込みました`); log('ok', `読み込み  ${f.name}`);
+    } catch (err) { reportError(err.message, `読み込み ${f.name}`); }
+  }
+}
+$('file').onchange = async e => { await importFiles([...e.target.files]); e.target.value = ''; };
+// drag & drop files anywhere on the window
+const dropZone = Object.assign(document.createElement('div'), {id: 'dropzone', hidden: true,
+  innerHTML: `<div>${icon('import')}<b>ここにドロップして読み込み</b><span>STEP / STL / WRL / .nrk</span></div>`});
+document.body.append(dropZone);
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; dropZone.hidden = false; });
+addEventListener('dragover', e => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; dropZone.hidden = true; } });
+addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; dropZone.hidden = true;
+  importFiles([...e.dataTransfer.files]);
+});
 
 function renderPanels() {
   renderTop();

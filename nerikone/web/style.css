@@ -168,3 +168,7 @@ body.no-tools #viewlabel{left:10px}
 .swatch{min-width:14px!important;width:14px;height:14px!important;padding:0;border-radius:4px;background:var(--c)!important;border:1px solid #fff4;opacity:1!important}
 .pop{padding:6px;width:240px;display:flex;flex-direction:column;gap:8px}.pop .ph{display:flex;align-items:center;gap:6px;font-weight:600}
 .fin{display:flex;flex-wrap:wrap;gap:4px}.fin button{border:1px solid var(--line);height:26px}
+#dropzone{position:fixed;inset:0;z-index:50;background:#0009;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#dropzone[hidden]{display:none}
+#dropzone>div{border:2px dashed var(--acc);border-radius:16px;padding:36px 48px;background:#26282cee;display:flex;flex-direction:column;align-items:center;gap:8px}
+#dropzone .ti{font-size:40px;color:var(--acc)}#dropzone b{font-size:15px}#dropzone span{color:var(--dim)}

@@ -469,6 +469,19 @@ def _fcol(B, p):
         raise BadParams(f"bad colour {p['color']!r}: {e}") from None
 
 
+@command("face.delete", "Delete faces", "Modify",
+         "Remove the faces nearest the given points (a hole, a boss, a fillet...) and close the gap with the faces around them.",
+         [P("body", "body", ""), P("faces", "edge_refs", None, "points on the faces")])
+def _fdel(B, p):
+    b = _body(B, p["body"])
+    faces = []
+    for q in p["faces"]:
+        f = face_at(b, q)
+        if not any(f is g for g in faces):
+            faces.append(f)
+    B[p["body"]] = b.remove_faces(faces)
+
+
 @command("body.delete", "Delete body", "Modify", "Remove a body.", [P("body", "body", "")])
 def _del(B, p):
     _body(B, p["body"], (sm.Part, sm.Shell, sm.Mesh))

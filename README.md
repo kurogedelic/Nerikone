@@ -37,7 +37,8 @@ timeline strip, outliner, navigation gizmo with view name / azimuth / elevation)
 | MMB or Alt+LMB / Shift+drag / wheel | Orbit / pan / zoom |
 | `G` `R` `S` (+ `X` `Y` `Z`, typed numbers, Enter / Esc) | Move / rotate / scale modally |
 | `E`, `Ctrl+B` (`F`), `Shift+Ctrl+B`, `Shift+S` | Push face, fillet, chamfer, shell (modal, typed values) |
-| `Shift+D`, `X` / `Delete`, `H` / `Alt+H`, `Cmd/Ctrl+A` | Duplicate, delete, hide / unhide, select all |
+| `Shift+D`, `X` / `Delete`, `H` / `Alt+H`, `Cmd/Ctrl+A` | Duplicate, delete (with faces selected: delete the body, or remove the faces and close the gap), hide / unhide, select all |
+| Drop files on the window | Import STEP / STL / WRL / `.nrk` |
 | Numpad `1` `3` `7` (`Ctrl` = opposite), `5`, `0`, `Home` | Front / right / top, ortho toggle, iso, frame |
 | `Z` / `Shift+Z` | Shading (solid, wire, X-ray) / render view |
 | `A` (or `+` button) | Add menu (new body under the mouse) |
