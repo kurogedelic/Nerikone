@@ -202,7 +202,7 @@ function applyShading() {
 // ------------------------------------------------------------------ state
 const S = {
   cmds: {}, doc: {features: [], bodies: {}}, version: -1,
-  mode: 'face', shading: 'solid', render: false, material: 'auto', renderBg: (() => { try { return localStorage.getItem('nerikone.renderBg') || 'dark'; } catch { return 'dark'; } })(),
+  modes: new Set(['face']), shading: 'solid', render: false, material: 'auto', renderBg: (() => { try { return localStorage.getItem('nerikone.renderBg') || 'dark'; } catch { return 'dark'; } })(),
   sel: {faces: [], edges: [], bodies: []},   // faces: {body, fi, point, normal}; edges: {body, ei, mid}
   hidden: new Set(), hover: null, feature: null, form: null,
   drag: null, modal: null, dialogOpen: (() => { try { return !!localStorage.getItem('nerikone.dialogOpen'); } catch { return false; } })(), groups: {}, faces: [], edges: [], framed: false, lastCmd: null,
@@ -382,15 +382,19 @@ function setRay(e) {
   const d = cam === ortho ? (ortho.userData.dist ?? 10) / ortho.zoom : cam.position.distanceTo(orbit.target);
   ray.params.Line.threshold = d * 0.012;
 }
+// Selection levels (edge, face, body) can be on together: an edge under the pointer wins (unless a face nearer the eye
+// hides it), then a face, then its body.
 function pick() {
-  if (S.mode === 'edge') {
-    const h = firstHit(visibleEdges());
-    return h && {kind: 'edge', body: h.object.userData.body, ei: h.object.userData.ei, mid: h.object.userData.mid, point: h.point};
+  const on = m => S.modes.has(m), solid = on('face') || on('body');
+  if (on('edge')) {
+    const e = firstHit(visibleEdges()), f = e && solid ? faceHit() : null;
+    if (e && (!f || e.distance <= f.distance * (1 + 1e-3) + 1e-6)) return {kind: 'edge', body: e.object.userData.body, ei: e.object.userData.ei, mid: e.object.userData.mid, point: e.point};
+    if (!solid) return null;
   }
   const h = faceHit();
   if (!h) return null;
   const u = h.object.userData;
-  if (S.mode === 'body') return {kind: 'body', body: u.body, point: h.point};
+  if (!on('face')) return {kind: 'body', body: u.body, point: h.point};
   const n = u.planar && u.normal ? V(u.normal) : h.face.normal.clone();
   return {kind: 'face', body: u.body, fi: u.fi, point: arr(h.point), normal: arr(n), mesh: u.mesh};
 }
@@ -640,7 +644,7 @@ function transformModal(kind) {
       const pv = arr(p);
       if (kind === 'grab' && m.copy) { // Option: copy the bodies to where they were moved
         const made = []; for (const n of names) { const d = await commit('body.duplicate', {body: n, offset: arr(m.t)}, {keepSel: true}); if (d) made.push(d.feature.params.name); }
-        if (made.length) { S.mode = 'body'; S.sel = {faces: [], edges: [], bodies: made}; refresh(); renderPanels(); }
+        if (made.length) { S.modes.add('body'); S.sel = {faces: [], edges: [], bodies: made}; refresh(); renderPanels(); }
         return;
       }
       for (const n of names) {
@@ -800,13 +804,14 @@ function marqueeEnd(e) {
   if (!m.moved) { if (!m.add) clearSel(); S.downEmpty = null; return; } // a plain click on empty space: select nothing
   const q = marqueeRect(e, m), sel = m.add ? S.sel : {faces: [], edges: [], bodies: []}, tmp = new T.Vector3();
   const world = (obj, pos, i) => tmp.fromBufferAttribute(pos, i).applyMatrix4(obj.matrixWorld).clone();
-  if (S.mode === 'edge') {
+  if (S.modes.has('edge')) {
     for (const l of visibleEdges()) {
       const pos = l.geometry.attributes.position, pts = []; for (let i = 0; i < pos.count; i++) pts.push(screenOf(world(l, pos, i)));
       const hit = q.crossing ? pts.some((p, i) => inRect(p, q) || (i && segHitsRect(pts[i - 1], p, q))) : pts.every(p => inRect(p, q));
       if (hit && !sel.edges.some(x => x.body === l.userData.body && x.ei === l.userData.ei)) sel.edges.push({kind: 'edge', body: l.userData.body, ei: l.userData.ei, mid: l.userData.mid});
     }
-  } else if (S.mode === 'face') {
+  }
+  if (S.modes.has('face')) {
     for (const f of visibleFaces()) {
       if (f.userData.mesh) continue;
       const pos = f.geometry.attributes.position; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -817,7 +822,8 @@ function marqueeEnd(e) {
         sel.faces.push({kind: 'face', body: f.userData.body, fi: f.userData.fi, point: arr(c), normal: f.userData.normal, planar: f.userData.planar});
       }
     }
-  } else {
+  }
+  if (S.modes.has('body')) {
     for (const n of Object.keys(S.groups)) {
       if (S.hidden.has(n)) continue;
       const bb = boxOf([n]); if (bb.isEmpty()) continue;
@@ -944,11 +950,11 @@ async function endHandleDrag(d) { hud(''); if (!d.moved) return; await idle(); a
 // ------------------------------------------------------------------ actions (bindable)
 const A = KM.register;
 const needBodies = () => selBodies().length > 0;
-A('mode.edge', 'エッジ選択モード', '選択', () => setMode('edge'));
-A('mode.face', '面選択モード', '選択', () => setMode('face'));
-A('mode.body', 'ボディ選択モード', '選択', () => setMode('body'));
+A('mode.edge', 'エッジを選ぶ（入 / 切）', '選択', () => setMode('edge'));
+A('mode.face', '面を選ぶ（入 / 切）', '選択', () => setMode('face'));
+A('mode.body', 'ボディを選ぶ（入 / 切）', '選択', () => setMode('body'));
 A('add.menu', '追加メニュー', '作成', e => addMenu(e));
-A('select.all', 'すべて選択', '選択', () => { S.mode = 'body'; S.sel = {faces: [], edges: [], bodies: Object.keys(S.doc.bodies).filter(n => !S.hidden.has(n))}; refresh(); renderPanels(); });
+A('select.all', 'すべて選択', '選択', () => { S.modes.add('body'); S.sel = {faces: [], edges: [], bodies: Object.keys(S.doc.bodies).filter(n => !S.hidden.has(n))}; refresh(); renderPanels(); });
 A('select.none', '選択解除', '選択', () => { S.form = null; S.feature = null; closeMenus(); clearSel(); });
 A('transform.grab', '移動 (G)', '変形', () => S.sel.edges.length === 1 && !S.sel.faces.length && !S.sel.bodies.length ? edgeMoveModal(S.sel.edges[0])
   : (S.sel.faces.length && !S.sel.bodies.length) ? pushModal() : transformModal('grab'));
@@ -964,7 +970,7 @@ A('edit.duplicate', '複製', '編集', async () => {
   const names = selBodies(); if (!names.length) return toast('ボディを選択');
   const made = [];
   for (const n of names) { const d = await commit('body.duplicate', {body: n}, {keepSel: true}); if (d) made.push(d.feature.params.name); }
-  S.mode = 'body'; S.sel = {faces: [], edges: [], bodies: made}; refresh(); transformModal('grab');
+  S.modes.add('body'); S.sel = {faces: [], edges: [], bodies: made}; refresh(); transformModal('grab');
 });
 A('edit.delete', '削除', '編集', async e => {
   if (e?.code === 'KeyX' && (S.tool || S.modal)) return; // X is an axis key inside tools and operations, never a delete there
@@ -1043,7 +1049,11 @@ A('file.export', '書き出し…', 'ファイル', e => exportMenu(e));
 A('help.keymap', 'ショートカット一覧と変更', 'アプリ', openKeymap);
 const run = (id, e) => { const a = KM.allActions().find(x => x.id === id); if (a) a.run(e); };
 
-function setMode(m) { S.mode = m; S.form = null; clearSel(); renderTop(); }
+function setMode(m) { // the buttons (and 2 3 4) turn a level on or off; at least one stays on
+  if (S.modes.has(m)) { if (S.modes.size === 1) return; S.modes.delete(m); S.sel[{edge: 'edges', face: 'faces', body: 'bodies'}[m]] = []; }
+  else S.modes.add(m);
+  S.form = null; refresh(); renderPanels(); renderTop();
+}
 function buildVis() { for (const [n, g] of Object.entries(S.groups)) g.visible = !S.hidden.has(n); renderPanels(); drawDims(); }
 
 addEventListener('keydown', e => {
@@ -1071,7 +1081,7 @@ function renderTop() {
     '<span class="sep"></span>' + btn('history.undo', 'undo', '元に戻す', S.doc.can_undo ? '' : 'disabled') + btn('history.redo', 'redo', 'やり直し', S.doc.can_redo ? '' : 'disabled');
   // centre: add, what a click selects, how the model is shown
   $('modebar').innerHTML = `<button id="addbtn" data-act="add.menu" data-tip="形を追加" data-key="${esc(KM.shortcutOf('add.menu'))}">${icon('add')}<span>追加</span></button>` +
-    `<div class="seg">${btn('mode.edge', 'sel-edge', 'エッジ', on(S.mode === 'edge'))}${btn('mode.face', 'sel-face', '面', on(S.mode === 'face'))}${btn('mode.body', 'sel-body', 'ボディ', on(S.mode === 'body'))}</div>` +
+    `<div class="seg">${btn('mode.edge', 'sel-edge', 'エッジ', on(S.modes.has('edge')))}${btn('mode.face', 'sel-face', '面', on(S.modes.has('face')))}${btn('mode.body', 'sel-body', 'ボディ', on(S.modes.has('body')))}</div>` +
     `<div class="seg">${SHADING.map(s => `<button data-shade="${s}" data-tip="${{solid: 'ソリッド', wire: 'ワイヤー', xray: 'X 線'}[s]}" data-key="${esc(KM.shortcutOf('view.shading'))}" ${on(!S.render && S.shading === s)}>${icon(s)}</button>`).join('')}${btn('view.render', 'render', 'レンダー', on(S.render))}</div>` +
     (S.render ? `<select id="material" style="width:auto">${['auto', 'clay', 'plastic', 'metal', 'glass'].map(m => `<option value="${m}" ${m === S.material ? 'selected' : ''}>${{auto: 'ボディごとの素材', clay: 'すべてクレイ', plastic: 'すべてプラスチック', metal: 'すべて金属', glass: 'すべてガラス'}[m]}</option>`).join('')}</select><select id="renderbg" style="width:auto">${Object.keys(BG).map(k => `<option value="${k}" ${k === S.renderBg ? 'selected' : ''}>${BG_JA[k]}</option>`).join('')}</select><button id="shot" data-tip="画像を保存">${icon('camera')}</button>` : '') +
     `<button id="snapmenu" class="menu ${S.snap.on ? 'on' : ''}" data-tip="スナップ" data-key="${esc(KM.shortcutOf('snap.toggle'))}">${icon('magnet')}<span>${S.snap.on ? (S.snap.grid ? S.snap.step : '入') : '切'}</span>${icon('chevron-down')}</button>` +
@@ -1488,7 +1498,7 @@ function renderPanels() {
     const n = el.dataset.body;
     if (e.target.closest('[data-mat]')) { materialPopover(e.target.closest('[data-mat]'), [n]); return; }
     if (e.target.closest('[data-eye]')) { S.hidden.has(n) ? S.hidden.delete(n) : S.hidden.add(n); buildVis(); return; }
-    S.mode = 'body'; select({kind: 'body', body: n}, e.shiftKey);
+    S.modes.add('body'); select({kind: 'body', body: n}, e.shiftKey);
   });
   $('outliner').querySelectorAll('[data-body]').forEach(el => el.ondblclick = e => { if (!e.target.closest('button')) frame([el.dataset.body]); });
   $('timeline').innerHTML = S.doc.features.map((f, i) =>
@@ -1895,7 +1905,7 @@ function setTool(t) {
   if (t !== S.tool) sfx('tool');
   S.tool = t; S.plus = false; S.dimA = S.dimB = null; S.dimLive = null; showSnap(null); midHint.visible = false; S.snapRef = null; S.rulerA = null; rulerPreview(null); S.sk = null; sketchPreview();
   if (t) { S.sel = {faces: [], edges: [], bodies: []}; S.hover = null; }
-  if (t === 'pushpull') S.mode = 'face';
+  if (t === 'pushpull') S.modes.add('face');
   orbit.mouseButtons.LEFT = NAV_TOOLS[t] ?? T.MOUSE.ROTATE;
   applyToolCursor();
   renderTools(); refresh(); renderPanels();
