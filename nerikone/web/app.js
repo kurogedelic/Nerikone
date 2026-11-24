@@ -1786,7 +1786,7 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
   const go = () => { try { onSubmit(read()); } catch (e) { $('p_err').textContent = e.message; } };
   if (cp) {
     const cons = () => JSON.parse(JSON.stringify(feature.params.constraints || []));
-    el.querySelectorAll('[data-cval]').forEach(i => i.addEventListener('change', e => { e.stopPropagation(); const c = cons(), k = +i.dataset.cval; c[k][c[k].length - 1] = +i.value; setConstraints(feature, c); }));
+    el.querySelectorAll('[data-cval]').forEach(i => i.addEventListener('change', e => { e.stopPropagation(); const c = cons(), k = +i.dataset.cval; c[k][c[k].length - 1] = numOf(i.value); setConstraints(feature, c); }));
     el.querySelectorAll('[data-cdel]').forEach(b => b.onclick = () => { const c = cons(); c.splice(+b.dataset.cdel, 1); updateFeature(feature.id, {constraints: c}); });
     el.querySelectorAll('[data-cadd]').forEach(b => b.onclick = () => setConstraints(feature, [...cons(), cp.adds[+b.dataset.cadd]]));
   }
@@ -2456,7 +2456,7 @@ function conPanel(f) {
   const ref = c => { const ns = CON_SEGS[c[0]] || 0, idx = c.slice(1, 1 + (ns || (c[0] === 'distance' ? 2 : 1)));
     return (ns ? '辺 ' : '点 ') + idx.map(i => i + 1).join(', '); };
   const rows = cons.map((c, k) => `<div class="crow" data-ck="${k}"><span class="ck">${esc(CON_JA[c[0]] || c[0])}</span><span class="cref">${ref(c)}</span>` +
-    (CON_VAL.has(c[0]) ? `<label class="scrub cval"><input type="number" step="${c[0] === 'angle' ? 1 : 0.1}" data-cval="${k}" value="${+(+c.at(-1)).toFixed(6)}"><span>${c[0] === 'angle' ? '°' : u}</span></label>` : '<span class="grow"></span>') +
+    (CON_VAL.has(c[0]) ? `<label class="scrub cval"><input class="num ${isExpr(c.at(-1)) ? 'expr' : ''}" type="text" inputmode="decimal" data-step="${c[0] === 'angle' ? 1 : 0.1}" data-cval="${k}" value="${esc(String(isExpr(c.at(-1)) ? c.at(-1) : +(+c.at(-1)).toFixed(6)))}" spellcheck="false"><span>${c[0] === 'angle' ? '°' : u}</span></label>` : '<span class="grow"></span>') +
     `<button class="ib" data-cdel="${k}" data-tip="この拘束を外す" aria-label="この拘束を外す">${icon('close')}</button></div>`).join('');
   const len = i => { const [a, b] = segs[i]; return Math.hypot(b[0] - a[0], b[1] - a[1]); };
   const ang = (i, j) => { const d = s => [segs[s][1][0] - segs[s][0][0], segs[s][1][1] - segs[s][0][1]], a = d(i), b = d(j);

@@ -71,3 +71,20 @@ def test_saved_and_loaded_with_expressions():
     e = K.Document()
     e.load_json(d.to_json())
     assert e.features[1]["params"]["height"] == "=h" and info(e, "Box1")["volume"] == approx(8)
+
+
+def test_constraint_dimensions_follow_variables():
+    d = build(("var.set", {"var": "h", "value": 2}),
+              ("sketch.polygon", {"points": [[0, 0], [2.1, 0.1], [2, 1.2], [-0.1, 0.9]],
+                                  "constraints": [["horizontal", 0], ["vertical", 1], ["horizontal", 2], ["vertical", 3],
+                                                  ["length", 0, "=h * 2"], ["length", 1, "=h"]]}),
+              ("region.extrude", {"body": "Polygon1", "amount": 1}))
+    assert info(d, "Polygon1")["volume"] == approx(8)
+    assert d.summary()["features"][1]["solved"]["dof"] == 2
+    d.update(1, {"value": 3})
+    assert not d.errors and info(d, "Polygon1")["volume"] == approx(18)
+
+
+def test_constraint_expression_must_work_out():
+    with pytest.raises(K.BadParams):
+        build(("sketch.polygon", {"points": [[0, 0], [2, 0], [1, 1]], "constraints": [["length", 0, "=nope"]]}))

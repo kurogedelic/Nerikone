@@ -462,11 +462,15 @@ def _solved(p, closed, bulges=()):
 SKETCH_SOLVED = {"sketch.polygon": True, "sketch.path": True, "sketch.line": False}  # command -> closed outline
 
 
-def sketch_solution(f):
+def sketch_solution(f, variables=None):
     """Solved points and degrees of freedom left of a constrained sketch step (for the viewer), or None."""
     closed = SKETCH_SOLVED.get(f.get("cmd"))
     p = f.get("params", {})
     if closed is None or not p.get("constraints"):
+        return None
+    try:
+        p = resolve(COMMANDS[f["cmd"]], p, variables or {})
+    except BadParams:
         return None
     try:
         pts, dof = constraints.solve([q[:2] for q in p["points"]], p["constraints"], closed=closed, bulges=p.get("bulges", ()))
@@ -1519,9 +1523,10 @@ class Document:
         return {}
 
     def summary(self):
+        before = lambda i: getattr(self.states[i - 1], "vars", {}) if 0 < i <= len(self.states) else {}  # noqa: E731
         return {"features": [{**f, "label": COMMANDS[f["cmd"]].label, "error": self.errors.get(f["id"]),
-                              **({"solved": s} if (s := sketch_solution(f)) else {})}
-                             for f in self.features],
+                              **({"solved": s} if (s := sketch_solution(f, before(i))) else {})}
+                             for i, f in enumerate(self.features)],
                 "bodies": {n: {**body_info(b), **self._appearance(n)} for n, b in self.bodies.items()},
                 "units": self.units, "variables": self.variables, "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
 

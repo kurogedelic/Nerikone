@@ -483,3 +483,5 @@ button:hover .pic .hole,.mi:hover .pic .hole{transform:scale(1)}                
 .cons .cval span{color:var(--dim);font-size:var(--fs-s)}
 .cons h5 .sub{margin-left:auto;color:var(--dim);font-weight:400;font-size:var(--fs-s)}
 .cons .hint{color:var(--dim);font-size:var(--fs-s);padding:4px 2px}
+/* a number written as an expression over variables (=W/2) */
+input.num.expr{color:var(--acc)}

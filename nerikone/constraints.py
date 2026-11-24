@@ -49,6 +49,10 @@ def normalise(raw):
         item = [c[0], *idx]
         if val:
             v = c[-1]
+            if isinstance(v, str) and v.strip().startswith("=") and len(v) <= 400:  # an expression (expr.py): worked out when the step runs
+                item.append(v.strip())
+                out.append(item)
+                continue
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
                 raise ConstraintError(f"{c[0]}: the value must be a number: {c!r}")
             if c[0] in ("length", "radius", "distance") and v <= 0:
