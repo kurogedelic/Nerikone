@@ -1257,9 +1257,9 @@ function contextActions() {
   if (s.edges.length) out.push(may('edit.fillet', 'fillet', 'フィレット', fz.fillet, 'この辺には不可'), may('edit.chamfer', 'chamfer', '面取り', fz.chamfer, 'この辺には不可'));
   // whole-body moves only for selected bodies: with a face or an edge selected, G moves that face or edge
   if (s.bodies.length) out.push(null, ['transform.grab', 'move', '移動'], ['transform.rotate', 'rotate', '回転'], ['transform.scale', 'scale', '拡大縮小'], ['edit.duplicate', 'duplicate', '複製']);
-  if (s.bodies.length >= 2) out.push(null, ['bool.union', 'union', '結合'], ['bool.cut', 'cut', '切り抜き'], ['bool.intersect', 'intersect', '交差']);
+  if (s.bodies.length >= 2) out.push(null, ['bool.union', 'union', '結合'], ['bool.cut', 'cut', '切り抜き'], ['bool.intersect', 'intersect', '交差'], ['edit.group', 'group', 'グループにする']);
   if (s.faces.length === 1 && (s.faces[0].normal || S.doc.bodies[s.faces[0].body]?.kind === 'Sketch')) out.push(['sketch.offset', 'offset', 'オフセット']);
-  if (s.faces.length === 2 && s.faces[0].body !== s.faces[1].body && !s.bodies.length) out.push(null, ['edit.mate', 'union', '合わせ']);
+  if (s.faces.length === 2 && s.faces[0].body !== s.faces[1].body && !s.bodies.length) out.push(null, ['edit.mate', 'mate', '合わせ']);
   if (s.bodies.length) out.push(null, ['edit.mirror', 'mirror', 'ミラー'], ['edit.pattern', 'pattern', '配列複写'], ['edit.split', 'split', '平面で分割']);
   if (selBodies().length) out.push(['measure.info', 'measure', '解析']);
   if (selBodies().length) out.push(null, ['view.frame', 'fit', 'フレーム'], ['hide.selected', 'eye-off', '隠す']);
@@ -1379,8 +1379,9 @@ function exportMenu(e) {
   const q = S.meshQ || 'normal';
   showMenu(r.left, r.bottom + 4, [{header: '形状（正確）'}, ['step', 'STEP (.step)'],
     {header: `メッシュ（細かさ: ${MESH_Q[q][0]}）`}, ['stl', 'STL (.stl)'], ['3mf', '3MF (.3mf)'], ['obj', 'OBJ (.obj)'], ['glb', 'glTF (.glb)'], ['usda', 'USD (.usda)'], ['wrl', 'VRML (.wrl)'],
-    {header: '2D 図面（正面・上面・側面）'}, ['svg', 'SVG (.svg)'], ['dxf', 'DXF (.dxf)'], null, ['nrk', 'Nerikone (.nrk)']]
-    .map(x => Array.isArray(x) ? {icon: x[0] === 'nrk' ? 'save' : x[0] === 'svg' || x[0] === 'dxf' ? 'drawing' : 'export', label: x[1], run: () => download(x[0])} : x)
+    {header: '2D 図面（正面・上面・側面）'}, ['svg', 'SVG (.svg)'], ['dxf', 'DXF (.dxf)'],
+    {header: '一覧'}, ['csv', '部品表 (.csv)'], null, ['nrk', 'Nerikone (.nrk)']]
+    .map(x => Array.isArray(x) ? {icon: x[0] === 'nrk' ? 'save' : x[0] === 'svg' || x[0] === 'dxf' ? 'drawing' : x[0] === 'csv' ? 'parts_list' : 'export', label: x[1], run: () => download(x[0])} : x)
     .concat([null, {icon: 'settings', label: `メッシュの細かさを変える（今: ${MESH_Q[q][0]}）`, run: () => {
       S.meshQ = {coarse: 'normal', normal: 'fine', fine: 'coarse'}[q]; try { localStorage.setItem('nerikone.meshQ', S.meshQ); } catch {} toast(`メッシュの細かさ: ${MESH_Q[S.meshQ][0]}`); }}]));
 }
@@ -1581,7 +1582,7 @@ function renderInspector() {
     ic = 'doc'; title = S.docName && S.docName !== 'nerikone' ? S.docName : '名称未設定'; sub = 'ドキュメント';
     const all = Object.values(S.doc.bodies);
     h += `<div class="isec"><div class="irow"><span>単位</span><select id="i_units">${['mm', 'cm', 'm', 'in'].map(k => `<option ${k === u ? 'selected' : ''}>${k}</option>`).join('')}</select></div></div>`;
-    h += varsPanel();
+    h += varsPanel() + groupsPanel();
     const ib = (id, ic2, tip, on = false) => `<button data-act="${id}" class="ib ${on ? 'on' : ''}" data-tip="${esc(tip)}" aria-label="${esc(tip)}">${icon(ic2)}</button>`;
     const opt = (id, list, cur, unit = '') => `<select id="${id}">${list.map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}${unit}</option>`).join('')}</select>`;
     const sn = S.snap, tg = (id, ic2, tip, on) => `<label class="itog" data-tip="${esc(tip)}" aria-label="${esc(tip)}"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}>${icon(ic2)}</label>`;
@@ -1611,6 +1612,11 @@ function renderInspector() {
 }
 function defaultsFromSelection(cmd) {
   const p = {};
+  if (cmd.id === 'asm.group') { // every selected body goes in; the name counts up
+    let i = 1; while ((S.doc.groups || {})['Group' + i] || S.doc.bodies['Group' + i]) i++;
+    return {group: 'Group' + i, bodies: selBodies()};
+  }
+  if (cmd.id === 'asm.move') return {group: Object.keys(S.doc.groups || {}).at(-1) || selBodies()[0] || '', translate: [0, 0, 0], rotate: [0, 0, 0], pivot: selBodies().length ? arr(pivotOf(selBodies())) : [0, 0, 0]};
   if (cmd.id === 'asm.mate') { // the first face picked is on the body that moves, the second on the one that stays
     const [a, b] = S.sel.faces, round = f => f && S.doc.bodies[f.body] && !f.normal;
     return {body: a?.body || '', at: a?.point || null, target: b?.body || '', target_at: b?.point || null, kind: round(a) && round(b) ? 'concentric' : 'flush', offset: 0, center: false};
@@ -1708,10 +1714,16 @@ function varsPanel() {
   const rows = names.map(n => { const f = varStep(n), v = f?.params.value ?? vars[n];
     return `<div class="crow" data-var="${esc(n)}"><span class="ck">${esc(n)}</span>${numInput('v_' + n, v, 0.1)}<span class="cref">${isExpr(v) ? '= ' + fmtN(vars[n]) : ''}</span>` +
       (f ? `<button class="ib" data-vdel="${f.id}" data-tip="この変数の手順を消す" aria-label="この変数の手順を消す">${icon('close')}</button>` : '') + '</div>'; }).join('');
-  return `<div class="isec cons" id="i_vars"><h5 data-tip="変数" aria-label="変数">${icon('settings')} <span class="sub">${names.length ? '式の中で =名前 として使えます' : ''}</span></h5>${rows}` +
+  return `<div class="isec cons" id="i_vars"><h5 data-tip="変数" aria-label="変数">${icon('variable')} <span class="sub">${names.length ? '式の中で =名前 として使えます' : ''}</span></h5>${rows}` +
     `<div class="ibtns"><button id="i_var_add">${icon('add')} 変数を追加</button></div></div>`;
 }
+function groupsPanel() {
+  const gs = Object.entries(S.doc.groups || {}); if (!gs.length) return '';
+  return `<div class="isec cons" id="i_groups"><h5 data-tip="グループ" aria-label="グループ">${icon('group')}</h5>` +
+    gs.map(([g, ns]) => `<div class="crow"><span class="ck">${esc(g)}</span><span class="cref">${esc(ns.join(', '))}</span><button class="ib" data-gsel="${esc(g)}" data-tip="選択" aria-label="選択">${icon('select')}</button></div>`).join('') + '</div>';
+}
 function bindVarsPanel() {
+  document.querySelectorAll('#i_groups [data-gsel]').forEach(b => b.onclick = () => { S.modes.add('body'); S.sel = {faces: [], edges: [], bodies: [...(S.doc.groups[b.dataset.gsel] || [])]}; refresh(); renderPanels(); });
   $('i_var_add')?.addEventListener('click', async () => {
     const name = prompt('変数の名前（英字・数字・_）', 'w'); if (!name) return;
     const value = prompt(`${name} の値（数字か =式）`, '1'); if (value == null || value === '') return;
@@ -2917,7 +2929,7 @@ if (innerWidth < 900) document.body.classList.add('no-rcol'); // a narrow window
 rapply();
 
 // ------------------------------------------------------------------ tooltips (data-tip, data-key, data-sub)
-const TOOL_JA = {'asm.mate': '合わせ', 'var.set': '変数', 'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
+const TOOL_JA = {'asm.group': 'グループ', 'asm.move': 'グループを動かす', 'asm.mate': '合わせ', 'var.set': '変数', 'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
   'sketch.extrude': '多角形を押し出し', 'nurbs.surface': 'NURBS 曲面', 'nurbs.loft': 'ロフト', 'nurbs.revolve': '回転体', 'nurbs.sweep': 'スイープ',
   'body.mirror': 'ミラー', 'hole.fill': '穴をふさぐ', 'body.pattern': '配列複写', 'body.split': '平面で分割', 'body.offset': '太らせる / 痩せさせる', 'face.draft': '抜き勾配', 'body.section': '断面を取り出す',
   'sketch.offset': 'オフセット', 'sketch.line': 'ライン', 'sketch.path': 'ライン', 'sketch.polygon': '多角形', 'sketch.rect': '矩形', 'sketch.circle': '円', 'region.extrude': '押し出し', 'face.extrude': 'プッシュ/プル',
@@ -3000,6 +3012,10 @@ A('edit.mate', '合わせ（面と面）', '編集', () => {
   const f = S.sel.faces;
   if (f.length !== 2 || f[0].body === f[1].body) return toast('別々のボディの面を 2 つ選択（動かす方、動かさない方の順）');
   openForm('asm.mate');
+});
+A('edit.group', '部品をグループにする', '編集', () => {
+  if (S.sel.bodies.length < 1) return toast('ボディを選択');
+  openForm('asm.group');
 });
 A('sketch.offset', '輪郭をオフセット', 'スケッチ', () => {
   const f = S.sel.faces.at(-1);

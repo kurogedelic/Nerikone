@@ -15,6 +15,7 @@ export const FK = {
   select: 'cursor', orbit: 'orbit', pan: 'hand', grab: 'hand_grab', zoom: 'zoom_in', ruler: 'ruler', dimension: 'dimension',
   rectangle: 'rectangle', polygon: 'polygon', fit: 'fit', move: 'move', rotate: 'rotate', scale: 'resize',
   facemove: 'move_vertical', push: 'push_pull', shell: 'shell', fillet: 'fillet', chamfer: 'chamfer',
+  mate: 'mate', group: 'group', variable: 'variable', parts_list: 'parts_list',
   union: 'union', cut: 'subtract', intersect: 'intersect', palette: 'palette', bucket: 'bucket', offset: 'offset',
   mirror: 'mirror', pattern: 'pattern', split: 'split', section: 'section', measure: 'measure', workplane: 'work_plane', sweep: 'sweep',
   box: 'cube', cylinder: 'cylinder', sphere: 'sphere', cone: 'cone', torus: 'torus', extrude: 'extrude', surface: 'surface',
@@ -34,6 +35,7 @@ export const ICONS = {
   surface: 'vector-bezier-2', loft: 'stack-2', revolve: 'rotate-360', spline: 'vector-spline',
   // modify
   push: 'arrow-bar-to-up', facemove: 'arrows-move-vertical', select: 'pointer', fillet: 'border-radius', chamfer: 'border-corners', shell: 'box-model',
+  mate: 'link', group: 'packages', variable: 'variable', parts_list: 'list-details',
   union: 'layers-union', cut: 'layers-subtract', intersect: 'layers-intersect',
   move: 'arrows-move', rotate: 'rotate', scale: 'resize', duplicate: 'box-multiple', trash: 'trash', import: 'file-import',
   // file / app
@@ -65,7 +67,7 @@ export const icon = (name, cls = '') => {
 };
 
 export const CMD_ICON = {
-  'asm.mate': 'union', 'var.set': 'settings',
+  'asm.mate': 'mate', 'asm.group': 'group', 'asm.move': 'move', 'var.set': 'variable',
   'body.box': 'box', 'body.cylinder': 'cylinder', 'body.sphere': 'sphere', 'body.cone': 'cone', 'body.torus': 'torus',
   'sketch.extrude': 'extrude', 'nurbs.surface': 'surface', 'nurbs.loft': 'loft', 'nurbs.revolve': 'revolve',
   'face.move': 'push', 'edge.fillet': 'fillet', 'edge.chamfer': 'chamfer', 'body.shell': 'shell',

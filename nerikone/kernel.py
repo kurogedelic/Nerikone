@@ -192,13 +192,15 @@ def _leaves(v):
 
 
 class State(dict):
-    """The bodies after a step, plus the variables set so far (var.set)."""
+    """The bodies after a step, plus the variables set so far (var.set) and the groups of bodies (asm.group)."""
     vars: dict = {}
+    groups: dict = {}
 
 
 def _state(bodies):
     out = State(bodies)
     out.vars = dict(getattr(bodies, "vars", {}))
+    out.groups = {k: list(v) for k, v in getattr(bodies, "groups", {}).items()}
     return out
 
 
@@ -1243,7 +1245,8 @@ def _turn(part, pivot, a, b):
           P("target", "body", "", "the body that stays"), P("target_at", "face_ref", None, "a point on its face"),
           P("kind", "enum", "flush", options=["flush", "align", "concentric"]),
           P("offset", "float", 0, "gap (flush / align) or slide along the axis (concentric)"),
-          P("center", "bool", False, "flush / align: also bring the face centres together")])
+          P("center", "bool", False, "flush / align: also bring the face centres together"),
+          P("angle", "float", 0, "then turn the body by this many degrees about the shared axis (concentric) or the face normal: a joint to drive", -360, 360)])
 def _mate(B, p):
     if p["body"] == p["target"]:
         raise BadParams("a body cannot be mated to itself")
@@ -1265,7 +1268,10 @@ def _mate(B, p):
         along = sum(a * b for a, b in zip(v, _unit(dt)))
         u = _unit(dt)
         shift = tuple(v[i] - along * u[i] + p["offset"] * u[i] for i in range(3))
-        B[p["body"]] = moved.translate(*shift)
+        moved = moved.translate(*shift)
+        if p["angle"]:
+            moved = moved.rotate(sm.Axis(tuple(at_.origin), u), p["angle"])
+        B[p["body"]] = moved
         return
     if not (fm.is_planar and ft.is_planar):
         raise BadParams("flush / align need two flat faces (use concentric for round ones)")
@@ -1277,7 +1283,40 @@ def _mate(B, p):
     shift = tuple(gap * c for c in nt)
     if p["center"]:
         shift = tuple(a - b + p["offset"] * c for a, b, c in zip(pt, pm, nt))
-    B[p["body"]] = moved.translate(*shift)
+    moved = moved.translate(*shift)
+    if p["angle"]:  # about the normal through the face's own centre, after the move
+        moved = moved.rotate(sm.Axis(tuple(a + b for a, b in zip(pm, shift)), _unit(nt)), p["angle"])
+    B[p["body"]] = moved
+
+
+@command("asm.group", "Group", "Assemble",
+         "Name a set of bodies (a sub-assembly) so that asm.move can move them together. Using a name again replaces that group.",
+         [P("group", "str", "Group1", "the group's name"), P("bodies", "bodies", [], "the bodies in it")])
+def _group(B, p):
+    if not expr.valid_name(p["group"]):
+        raise BadParams(f"'{p['group']}' cannot be a group name: use letters, digits and _ (not starting with a digit)")
+    if p["group"] in B:
+        raise BadParams(f"'{p['group']}' is already the name of a body")
+    if not p["bodies"]:
+        raise BadParams("a group needs at least one body")
+    for n in p["bodies"]:
+        _body(B, n, (sm.Part, sm.Shell, sm.Mesh))
+    B.groups[p["group"]] = list(dict.fromkeys(p["bodies"]))
+
+
+@command("asm.move", "Move group", "Assemble",
+         "Move and turn a group (or one body) as one piece: rotate (degrees about X, Y, Z) about `pivot`, then translate. "
+         "Use it with expressions to pose a sub-assembly.",
+         [P("group", "str", "", "a group name, or a body name"), P("translate", "vec3", [0, 0, 0]), P("rotate", "vec3", [0, 0, 0]),
+          P("pivot", "vec3", [0, 0, 0])])
+def _move_group(B, p):
+    names = [n for n in B.groups.get(p["group"], []) if n in B] or ([p["group"]] if p["group"] in B else [])
+    if not names:
+        raise BadParams(f"no group or body '{p['group']}' (groups: {sorted(B.groups)}, bodies: {sorted(B)})")
+    for n in names:
+        if isinstance(B[n], Dimension):
+            continue
+        _tr(B, {"body": n, "translate": p["translate"], "rotate": p["rotate"], "scale": 1.0, "pivot": p["pivot"]})
 
 
 @command("body.delete", "Delete body", "Modify", "Remove a body.", [P("body", "body", "")])
@@ -1406,6 +1445,12 @@ class Document:
     @property
     def variables(self) -> dict:
         return dict(getattr(self.bodies, "vars", {}))
+
+    @property
+    def groups(self) -> dict:
+        """Group name -> the bodies of it that still exist."""
+        b = self.bodies
+        return {g: [n for n in ns if n in b] for g, ns in getattr(b, "groups", {}).items()}
 
     def _apply(self, bodies, f, record=False):
         """Run step `f` on `bodies`. With `record`, the faces and edges it picks are kept in f["refs"] (see face_at)."""
@@ -1600,7 +1645,7 @@ class Document:
                               **({"solved": s} if (s := sketch_solution(f, before(i))) else {})}
                              for i, f in enumerate(self.features)],
                 "bodies": {n: {**body_info(b), **self._appearance(n)} for n, b in self.bodies.items()},
-                "units": self.units, "variables": self.variables, "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
+                "units": self.units, "variables": self.variables, "groups": self.groups, "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
 
 
 def _unknown(cid):
@@ -1667,6 +1712,7 @@ def measure(doc: "Document", kind: str, p: dict) -> dict:
     interference  {bodies?}                 pairs of solids that overlap, with the shared volume (all solids if omitted)
     draft         {body, direction?, min_angle?}  how each face releases from a mold pulled along `direction`
     angle         {a, at_a, b, at_b}        the angle between the faces nearest the two points
+    parts         {bodies?}                 the bill of materials: identical parts counted together
     """
     B = doc.bodies
     if not isinstance(p, dict):
@@ -1691,6 +1737,8 @@ def measure(doc: "Document", kind: str, p: dict) -> dict:
                 d.update(area=round(b.area, 6))
             out[n] = d
         return {"bodies": out}
+    if kind == "parts":
+        return {"parts": parts_list(doc, names("bodies", (sm.Part, sm.Shell, sm.Mesh)) if p.get("bodies") else None)}
     if kind == "distance":
         a, b = _body(B, str(p.get("a", "")), (sm.Part, sm.Shell)), _body(B, str(p.get("b", "")), (sm.Part, sm.Shell))
         cp = a.closest_points(b)
@@ -1811,7 +1859,7 @@ def scene(bodies):
 # ---------------------------------------------------------------- export
 
 EXPORTS = {"wrl": "model/vrml", "step": "model/step", "stl": "model/stl", "glb": "model/gltf-binary", "usda": "model/vnd.usda",
-           "nrk": "application/json", "3mf": "model/3mf", "obj": "model/obj", "svg": "image/svg+xml", "dxf": "image/vnd.dxf"}
+           "nrk": "application/json", "csv": "text/csv", "3mf": "model/3mf", "obj": "model/obj", "svg": "image/svg+xml", "dxf": "image/vnd.dxf"}
 
 
 def write_3mf(meshes, unit="millimeter") -> bytes:
@@ -1834,6 +1882,44 @@ def write_3mf(meshes, unit="millimeter") -> bytes:
         z.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
                    '<Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
         z.writestr("3D/3dmodel.model", model)
+    return buf.getvalue()
+
+
+def parts_list(doc: "Document", names=None) -> list[dict]:
+    """The bill of materials: solids and surfaces, identical ones (same volume and size) counted together."""
+    groups = doc.groups
+    rows: dict = {}
+    for n, b in doc.bodies.items():
+        if names and n not in names or not isinstance(b, (sm.Part, sm.Shell, sm.Mesh)) or isinstance(b, (sm.Sketch, Dimension)):
+            continue
+        bb = b.bbox()
+        size = [round(bb.max[i] - bb.min[i], 6) for i in range(3)]
+        vol = round(b.volume, 6) if isinstance(b, sm.Part) else None
+        app = doc._appearance(n)
+        key = (vol, tuple(sorted(size)), app.get("finish"), type(b).__name__)
+        row = rows.setdefault(key, {"names": [], "qty": 0, "kind": type(b).__name__, "volume": vol, "size": size,
+                                    "finish": app.get("finish") or "", "groups": set()})
+        row["names"].append(n)
+        row["qty"] += 1
+        row["groups"].update(g for g, ns in groups.items() if n in ns)
+    out = []
+    for i, row in enumerate(sorted(rows.values(), key=lambda r: r["names"][0]), 1):
+        out.append({"item": i, **row, "groups": sorted(row["groups"])})
+    return out
+
+
+def parts_csv(doc: "Document", names=None) -> str:
+    import csv
+    rows = parts_list(doc, names)
+    if not rows:
+        raise BadParams("nothing to list: add some solids")
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    u = doc.units
+    w.writerow(["Item", "Qty", "Names", "Kind", f"Volume ({u}^3)", f"Size X ({u})", f"Size Y ({u})", f"Size Z ({u})", "Finish", "Groups"])
+    for r in rows:
+        w.writerow([r["item"], r["qty"], " ".join(r["names"]), r["kind"], "" if r["volume"] is None else f"{r['volume']:.6g}",
+                    *[f"{x:.6g}" for x in r["size"]], r["finish"], " ".join(r["groups"])])
     return buf.getvalue()
 
 
@@ -1884,6 +1970,8 @@ def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: f
     """`tolerance` (model units) sets how finely curved faces are faceted in the mesh formats (stl, 3mf, obj, wrl)."""
     if fmt == "nrk":
         return json.dumps(doc.to_json()).encode()
+    if fmt == "csv":  # the bill of materials
+        return parts_csv(doc, names).encode()
     if tolerance is not None and not (1e-6 <= tolerance <= 1e3):
         raise BadParams("tolerance must be between 0.000001 and 1000")
     shapes = [b for n, b in doc.bodies.items() if (not names or n in names) and not isinstance(b, (sm.Sketch, sm.Wire, Dimension))]

@@ -18,7 +18,7 @@ COVERED = {
     "edge.fillet", "edge.chamfer", "edge.move", "body.shell", "face.extrude", "face.move", "face.delete", "face.draft",
     "face.split", "face.color", "body.boolean", "body.mirror", "body.pattern", "body.offset", "body.split",
     "body.section", "body.transform", "body.duplicate", "body.delete", "body.material", "dim.add", "hole.fill",
-    "asm.mate", "var.set", "nurbs.loft", "nurbs.revolve", "nurbs.surface", "nurbs.sweep", "sketch.rect", "sketch.circle", "sketch.polygon",
+    "asm.mate", "asm.group", "asm.move", "var.set", "nurbs.loft", "nurbs.revolve", "nurbs.surface", "nurbs.sweep", "sketch.rect", "sketch.circle", "sketch.polygon",
     "sketch.line", "sketch.path", "sketch.extrude", "sketch.offset", "region.extrude", "file.import",
 }
 

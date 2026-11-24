@@ -1,0 +1,195 @@
+{
+ "format": "nerikone/1",
+ "units": "mm",
+ "features": [
+  {
+   "id": 1,
+   "cmd": "var.set",
+   "params": {
+    "var": "open",
+    "value": 35.0
+   },
+   "suppressed": false
+  },
+  {
+   "id": 2,
+   "cmd": "body.box",
+   "params": {
+    "length": 60.0,
+    "width": 40.0,
+    "height": 10.0,
+    "at": [
+     0.0,
+     0.0,
+     5.0
+    ],
+    "name": "Base"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 3,
+   "cmd": "body.cylinder",
+   "params": {
+    "radius": 6.0,
+    "height": 30.0,
+    "at": [
+     0.0,
+     0.0,
+     25.0
+    ],
+    "name": "Pin"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 4,
+   "cmd": "body.box",
+   "params": {
+    "length": 70.0,
+    "width": 12.0,
+    "height": 6.0,
+    "at": [
+     30.0,
+     0.0,
+     60.0
+    ],
+    "name": "Arm"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 5,
+   "cmd": "asm.mate",
+   "params": {
+    "body": "Arm",
+    "at": [
+     30.0,
+     0.0,
+     57.0
+    ],
+    "target": "Pin",
+    "target_at": [
+     0.0,
+     0.0,
+     40.0
+    ],
+    "kind": "flush",
+    "offset": 0.0,
+    "center": false,
+    "angle": 0.0
+   },
+   "suppressed": false,
+   "refs": {
+    "fm30.0,0.0,57.0": {
+     "type": "plane",
+     "n": [
+      -0.0,
+      -0.0,
+      -1.0
+     ]
+    },
+    "ft0.0,0.0,40.0": {
+     "type": "plane",
+     "n": [
+      0.0,
+      -0.0,
+      1.0
+     ]
+    }
+   }
+  },
+  {
+   "id": 6,
+   "cmd": "body.cylinder",
+   "params": {
+    "radius": 4.0,
+    "height": 14.0,
+    "at": [
+     60.0,
+     0.0,
+     70.0
+    ],
+    "name": "Knob"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 7,
+   "cmd": "asm.mate",
+   "params": {
+    "body": "Knob",
+    "at": [
+     60.0,
+     0.0,
+     63.0
+    ],
+    "target": "Arm",
+    "target_at": [
+     30.0,
+     0.0,
+     46.0
+    ],
+    "kind": "flush",
+    "offset": 0.0,
+    "center": false,
+    "angle": 0.0
+   },
+   "suppressed": false,
+   "refs": {
+    "fm60.0,0.0,63.0": {
+     "type": "plane",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    },
+    "ft30.0,0.0,46.0": {
+     "type": "plane",
+     "n": [
+      0.0,
+      -0.0,
+      1.0
+     ]
+    }
+   }
+  },
+  {
+   "id": 8,
+   "cmd": "asm.group",
+   "params": {
+    "group": "Lever",
+    "bodies": [
+     "Arm",
+     "Knob"
+    ]
+   },
+   "suppressed": false
+  },
+  {
+   "id": 9,
+   "cmd": "asm.move",
+   "params": {
+    "group": "Lever",
+    "translate": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "rotate": [
+     0.0,
+     0.0,
+     "=open"
+    ],
+    "pivot": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "suppressed": false
+  }
+ ],
+ "blobs": {}
+}

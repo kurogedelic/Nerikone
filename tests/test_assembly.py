@@ -81,3 +81,89 @@ def test_a_sketch_or_missing_body_is_refused():
     for body in ("S", "Nope"):
         with pytest.raises(K.BadParams):
             d.execute("asm.mate", {"body": body, "target": "A", "at": [0, 0, 0], "target_at": [0, 0, 1]})
+
+
+# ---------------------------------------------------------------- joints, groups, parts list
+
+def test_mate_angle_turns_the_part_about_the_shared_axis():
+    d = build(("body.cylinder", {"radius": 1, "height": 2, "name": "Pin"}), ("body.box", {"length": 3, "width": 0.5, "height": 0.5, "at": [0, 0, 3], "name": "Arm"}))
+    d.execute("asm.mate", {"body": "Arm", "at": [0, 0, 2.75], "target": "Pin", "target_at": [0, 0, 1], "angle": 90})
+    assert bbox(d, "Arm") == [[-0.25, -1.5, 1], [0.25, 1.5, 1.5]]  # was along x; now along y, still sitting on the pin
+
+
+def test_the_angle_can_be_a_variable_so_the_joint_can_be_driven():
+    d = build(("var.set", {"var": "open", "value": 0}), ("body.cylinder", {"radius": 1, "height": 2, "name": "Pin"}),
+              ("body.box", {"length": 3, "width": 0.5, "height": 0.5, "at": [0, 0, 3], "name": "Arm"}))
+    d.execute("asm.mate", {"body": "Arm", "at": [0, 0, 2.75], "target": "Pin", "target_at": [0, 0, 1], "angle": "=open"})
+    assert bbox(d, "Arm")[1][0] == approx(1.5)
+    d.update(1, {"value": 90})
+    assert not d.errors and bbox(d, "Arm") == [[-0.25, -1.5, 1], [0.25, 1.5, 1.5]]
+
+
+def groups():
+    return build(("body.box", {"name": "Arm"}), ("body.box", {"name": "Flag", "at": [0, 0, 8]}), ("body.box", {"name": "Base", "at": [20, 0, 0]}),
+                 ("asm.group", {"group": "Hand", "bodies": ["Arm", "Flag"]}))
+
+
+def test_group_moves_together():
+    d = groups()
+    d.execute("asm.move", {"group": "Hand", "translate": [10, 0, 0]})
+    assert bbox(d, "Arm")[0][0] == approx(9) and bbox(d, "Flag")[0][0] == approx(9) and bbox(d, "Base")[0][0] == approx(19)
+    assert d.groups == {"Hand": ["Arm", "Flag"]} and d.summary()["groups"] == d.groups
+
+
+def test_group_rotates_about_a_pivot_and_one_body_can_be_moved_by_name():
+    d = groups()
+    d.execute("asm.move", {"group": "Hand", "rotate": [0, 0, 90], "pivot": [5, 0, 0]})
+    assert bbox(d, "Arm") == [[4, -6, -1], [6, -4, 1]]
+    d.execute("asm.move", {"group": "Base", "translate": [0, 0, 1]})
+    assert bbox(d, "Base")[0][2] == approx(0)
+
+
+def test_group_follows_edits_and_loses_deleted_bodies():
+    d = groups()
+    d.execute("body.delete", {"body": "Flag"})
+    assert d.groups == {"Hand": ["Arm"]}
+    d.undo()
+    assert d.groups == {"Hand": ["Arm", "Flag"]}
+
+
+@pytest.mark.parametrize("cmd,p", [
+    ("asm.group", {"group": "Bad Name", "bodies": ["Arm"]}), ("asm.group", {"group": "G", "bodies": []}),
+    ("asm.group", {"group": "G", "bodies": ["Nope"]}), ("asm.group", {"group": "Arm", "bodies": ["Arm"]}),
+    ("asm.move", {"group": "Nope"}),
+])
+def test_group_refusals(cmd, p):
+    d = groups()
+    before = list(d.features)
+    with pytest.raises(K.BadParams):
+        d.execute(cmd, p)
+    assert d.features == before
+
+
+def test_parts_list_counts_identical_parts():
+    d = build(*[("body.box", {"length": 10, "width": 20, "height": 5, "at": [i * 30, 0, 0], "name": f"Plate{i}"}) for i in range(3)],
+              ("body.cylinder", {"radius": 3, "height": 8, "at": [0, 50, 0], "name": "Pin"}), ("body.material", {"body": "Pin", "finish": "metal"}),
+              ("sketch.rect", {"name": "S"}), ("asm.group", {"group": "Stack", "bodies": ["Plate0", "Plate1"]}))
+    rows = K.measure(d, "parts", {})["parts"]
+    assert [(r["qty"], r["names"]) for r in rows] == [(1, ["Pin"]), (3, ["Plate0", "Plate1", "Plate2"])]  # the sketch is not a part
+    assert rows[1]["groups"] == ["Stack"] and rows[0]["finish"] == "metal"
+    csv = K.export(d, "csv").decode().splitlines()
+    assert csv[0].startswith("Item,Qty,Names") and csv[2].startswith("2,3,Plate0 Plate1 Plate2,Part,1000,")
+
+
+def test_parts_list_with_nothing_to_list():
+    with pytest.raises(K.BadParams):
+        K.export(K.Document(), "csv")
+
+
+def test_example_arm_swings_with_its_variable():
+    import json
+    import pathlib
+    d = K.Document()
+    d.load_json(json.loads((pathlib.Path(__file__).parent.parent / "examples" / "arm.nrk").read_text()))
+    assert not d.errors and d.groups == {"Lever": ["Arm", "Knob"]}
+    var = next(f for f in d.features if f["cmd"] == "var.set")
+    d.update(var["id"], {"value": 0})
+    knob = bbox(d, "Knob")
+    assert knob[0][0] == approx(56) and knob[1][2] == approx(60) and knob[0][2] == approx(46)  # straight out along x, on the arm
