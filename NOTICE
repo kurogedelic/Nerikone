@@ -22,6 +22,14 @@ The web viewer loads, from a CDN (not included in this repository):
   three.js - Copyright (c) 2010-2023 three.js authors - MIT License
   Tabler Icons - Copyright (c) 2020-2024 Paweł Kuna - MIT License
 
+The browser build (tools/build-web-local.py) runs the kernel in the visitor's browser. It ships, next to the page:
+
+  smlibwasm (@classcad/smlibwasm) - SMLib compiled to WebAssembly - MIT, Apache-2.0 (USD BRep, NVIDIA) and OFL-1.1;
+    its licence files are copied with it (vendor/smlibwasm)
+  Pyodide (Python for WebAssembly, with CPython) - Mozilla Public License 2.0 and the Python licence;
+    its licence is copied with it (vendor/pyodide/LICENSE); we use it unmodified
+  numpy - BSD-3-Clause
+
 The Python MCP server depends on the MCP Python SDK - Copyright (c) 2024 Anthropic, PBC - MIT License.
 The other Python dependencies (numpy, starlette, uvicorn, pydantic and others, pulled in by pip) are under their own
 MIT, BSD or Apache-2.0 licences; none of them is copyleft.

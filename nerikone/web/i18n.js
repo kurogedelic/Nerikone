@@ -280,6 +280,7 @@ const EN = {
   'ドラッグで移動': 'Drag to move',
   'アイテム': 'Items',
   '情報': 'Info',
+  '効果音': 'Sound effects',
   '右パネル': 'Side panels',
   '右パネル表示': 'Toggle side panels',
   '履歴パネル表示': 'Toggle history',

@@ -7,6 +7,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {icon, cmdIcon, ICONS, glyphFor} from './icons.js';
 import * as KM from './keymap.js';
 import {LANG, setLang, startTranslating} from './i18n.js';
+import {sfx, soundOn, setSound, soundVolume, setVolume, dragStart, dragValue, dragStop} from './sound.js';
 
 const $ = id => document.getElementById(id);
 const V = a => new T.Vector3(a[0], a[1], a[2]);
@@ -44,7 +45,7 @@ function log(kind, text, detail) {
 function reportError(raw, ctx) {
   const short = friendly(raw);
   log('err', ctx ? `${ctx}: ${short}` : short, raw !== short ? raw : undefined);
-  toast(short, true);
+  toast(short, true); sfx('error');
 }
 const fmtTime = d => d.toTimeString().slice(0, 8);
 function renderConsole() {
@@ -446,7 +447,7 @@ async function commit(cmd, params, {keepSel} = {}) {
     S.feature = d.feature.id; S.form = null; S.lastCmd = cmd;
     if (!keepSel) S.sel = {faces: [], edges: [], bodies: []};
     applyState(d);
-    toast(`${TOOL_JA[cmd] || S.cmds[cmd]?.label || cmd} ✓`);
+    toast(`${TOOL_JA[cmd] || S.cmds[cmd]?.label || cmd} ✓`); sfx('commit');
     log('ok', `${S.cmds[cmd]?.label || cmd}  ${summarize(params)}`);
     return d;
   } catch (e) { reportError(e.message, S.cmds[cmd]?.label || cmd); await load(); }
@@ -463,7 +464,7 @@ function clearSel() { S.sel = {faces: [], edges: [], bodies: []}; refresh(); ren
 function startModal(m) {
   S.modal = {typed: '', axis: null, ...m, x0: S.mouse?.x ?? 0, y0: S.mouse?.y ?? 0};
   if (m.icon) setCursor(m.icon, 'hot');
-  orbit.enabled = false; gizmo.visible = false;
+  orbit.enabled = false; gizmo.visible = false; dragStart();
   m.init?.(S.modal);
   updateModal(); renderStatus();
   return S.modal;
@@ -524,7 +525,7 @@ function updateModal() {
   const md = S.modal; if (!md) return;
   const {v, typed} = modalValue(md);
   if (v == null || !isFinite(v)) return;
-  md.value = v;
+  md.value = v; dragValue(md.kind === 'scale' ? (v - 1) * 2 : v, md.kind === 'rotate' ? 90 : md.kind === 'scale' ? 1 : 5);
   md.custom = md.apply(md, v);
   md.isTyped = typed || !!md.typed;
   renderModalHud();
@@ -546,7 +547,7 @@ function renderModalHud() {
 }
 async function endModal(ok) {
   const md = S.modal; if (!md) return;
-  S.modal = null; orbit.enabled = true; hud(''); md.ghosts?.forEach(g => g.parent?.remove(g)); md.ghosts = null; if (md.kind === 'grab') S.plus = false; S.cursorKey = null; // push/pull keeps its + while the tool stays active axisGuide.visible = triad.visible = moveLine.visible = false;
+  S.modal = null; dragStop(); orbit.enabled = true; hud(''); md.ghosts?.forEach(g => g.parent?.remove(g)); md.ghosts = null; if (md.kind === 'grab') S.plus = false; S.cursorKey = null; // push/pull keeps its + while the tool stays active axisGuide.visible = triad.visible = moveLine.visible = false;
   canvas.style.cursor = ''; S.cursorKey = null; applyToolCursor();
   if (ok && md.value != null) { await idle(); await md.finish(md, md.value); }
   else { md.cancel?.(md); await idle(); await load(); }
@@ -557,7 +558,7 @@ function modalKey(e) {
   if (k === 'Escape') return endModal(false);
   if (k === 'Enter' || k === 'NumpadEnter') return endModal(true);
   if (k === 'Alt' && e.repeat) return;
-  if (k === 'Alt' && md.pp) { md.keep = !md.keep; e.preventDefault(); updateModal(); renderStatus(); setCursor(md.icon, 'hot'); return; } // Option during push/pull: keep the face or not
+  if (k === 'Alt' && md.pp) { sfx('plus'); md.keep = !md.keep; e.preventDefault(); updateModal(); renderStatus(); setCursor(md.icon, 'hot'); return; } // Option during push/pull: keep the face or not
   if (k === 'Alt' && md.kind === 'grab') { md.copy = !md.copy; e.preventDefault(); md.onCopy?.(md); updateModal(); renderStatus(); setCursor(md.icon, 'hot'); return; } // Option during move: copy
   if (md.axes && ['x', 'y', 'z'].includes(k.toLowerCase())) { const a = k.toUpperCase(); md.axis = md.axis === a ? null : a; md.onAxis?.(md); }
   else if (/^[0-9.]$/.test(k) || (k === '-' && !md.typed)) md.typed += k;
@@ -729,7 +730,7 @@ function altChanged() { // redraw the cursor when the + toggles
 // is running (push/pull, move) a tap flips it for that operation. A finished operation or another tool switches it off again.
 addEventListener('keydown', e => {
   if (e.key !== 'Alt' || e.repeat || S.modal || S.tool !== 'pushpull') return;
-  S.plus = !S.plus; e.preventDefault(); altChanged(); renderStatus();
+  S.plus = !S.plus; e.preventDefault(); altChanged(); renderStatus(); sfx('plus');
 });
 for (const t of ['keydown', 'keyup']) addEventListener(t, e => { // Ctrl flips snapping while it is held
   if (e.key !== 'Control' || S.ctrlKey === (t === 'keydown')) return;
@@ -775,7 +776,7 @@ addEventListener('pointermove', e => {
     if (e.target !== canvas) return;
     const h = pickHandle() ? null : pick();
     const key = h && (h.kind + h.body + (h.fi ?? '') + (h.ei ?? ''));
-    if (key !== S.hoverKey) { S.hover = h; S.hoverKey = key; refresh(); }
+    if (key !== S.hoverKey) { S.hover = h; S.hoverKey = key; if (h) sfx('hover'); refresh(); }
     if (S.tool) { if (!S.navDrag) applyToolCursor(); } else canvas.style.cursor = pickHandle() || h ? 'pointer' : '';
     return;
   }
@@ -828,7 +829,7 @@ addEventListener('pointerup', async e => {
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 function select(h, add) {
-  const sel = S.sel;
+  const sel = S.sel; sfx('click');
   if (!add) { sel.faces = []; sel.edges = []; sel.bodies = []; }
   const toggle = (list, match, item) => { const i = list.findIndex(match); i >= 0 ? list.splice(i, 1) : list.push(item); };
   if (h.kind === 'face') toggle(sel.faces, f => f.body === h.body && f.fi === h.fi, h);
@@ -946,12 +947,13 @@ function showTab(t, toggle) { // open the panel (or, from a button, fold it when
   rsave(); savePanes(); rapply(); renderTop();
 }
 const tabShown = t => !document.body.classList.contains('no-rcol') && !rstate.shut.includes(t);
+A('sound.toggle', '効果音', '表示', () => { setSound(!soundOn()); if (soundOn()) sfx('toggle'); });
 A('panel.column', '右パネル表示', '表示', () => { document.body.classList.toggle('no-rcol'); rsave(); savePanes(); renderTop(); });
 A('panel.inspector', '情報パネル表示', '表示', () => showTab('insp', true));
 A('panel.side', 'アイテム表示', '表示', () => showTab('side', true));
 A('panel.history', '履歴パネル表示', '表示', () => showTab('hist', true));
-A('history.undo', '元に戻す', '履歴', async () => applyState(await post('api/undo')));
-A('history.redo', 'やり直し', '履歴', async () => applyState(await post('api/redo')));
+A('history.undo', '元に戻す', '履歴', async () => { applyState(await post('api/undo')); sfx('undo'); });
+A('history.redo', 'やり直し', '履歴', async () => { applyState(await post('api/redo')); sfx('redo'); });
 A('command.repeat', '直前のコマンドを繰り返す', '履歴', () => { if (S.lastCmd) openForm(S.lastCmd); });
 A('command.palette', 'コマンド検索', 'アプリ', openPalette);
 A('file.new', '新規', 'ファイル', async () => { if (confirm('新しいドキュメントを作りますか？（取り消しで戻せます）')) { S.framed = false; S.feature = null; applyState(await post('api/new')); } });
@@ -1054,6 +1056,7 @@ function viewMenu(e) {
     {icon: S.workPlane ? 'check' : 'workplane', label: '作業平面を設定…', run: () => run('plane.set')},
     ...(S.workPlane ? [{icon: 'blank', label: '作業平面を地面に戻す', run: () => run('plane.clear')}] : []),
     {icon: 'eye', label: 'すべて表示', key: K('hide.unhide'), run: () => run('hide.unhide')},
+    {icon: soundOn() ? 'check' : 'blank', label: '効果音', run: () => run('sound.toggle')},
     null, {header: 'パネル'},
     {icon: tabShown('side') ? 'check' : 'blank', label: 'アイテム', key: K('panel.side'), run: () => run('panel.side')},
     {icon: tabShown('insp') ? 'check' : 'blank', label: '情報', key: K('panel.inspector'), run: () => run('panel.inspector')},
@@ -1063,6 +1066,13 @@ function viewMenu(e) {
   ]);
 }
 document.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b && !b.disabled) run(b.dataset.act, e); });
+// interface sounds: a tick when the pointer enters a button, a pop when one is pressed
+let hoverBtn = null;
+document.addEventListener('mouseover', e => {
+  const b = e.target.closest?.('button, .orow, .mi, .chip'); if (b === hoverBtn) return; hoverBtn = b;
+  if (b && !b.disabled) sfx('hover');
+});
+document.addEventListener('pointerdown', e => { const b = e.target.closest?.('button, .orow, .mi, .chip'); if (b && !b.disabled && e.button === 0) sfx('click'); }, true);
 
 // Tool strip, two columns, in the order work usually goes: draw, push/pull it into a solid, refine, arrange, combine,
 // check; the view tools last. Commands that need a selection look dimmed until there is one (they stay clickable and
@@ -1592,6 +1602,7 @@ const rulerMat = new T.LineBasicMaterial({color: 0xffd27f, depthTest: false});
 const dotMat = new T.PointsMaterial({color: 0xffd27f, size: 7, sizeAttenuation: false, depthTest: false});
 const rulerLabels = Object.assign(document.createElement('div'), {id: 'rulerlabels'}); view.append(rulerLabels);
 function setTool(t) {
+  if (t !== S.tool) sfx('tool');
   S.tool = t; S.plus = false; S.dimA = S.dimB = null; S.dimLive = null; showSnap(null); midHint.visible = false; S.snapRef = null; S.rulerA = null; rulerPreview(null); S.sk = null; sketchPreview();
   if (t) { S.sel = {faces: [], edges: [], bodies: []}; S.hover = null; }
   if (t === 'pushpull') S.mode = 'face';
@@ -1613,7 +1624,8 @@ const snapLabel = Object.assign(document.createElement('div'), {id: 'snaplabel',
 function showSnap(sp, e) {
   const k = sp?.snap && SNAP[sp.kind];
   snapDot.visible = snapEdge.visible = !!k; snapLabel.hidden = !k;
-  if (!k) return;
+  if (!k) { S.snapSeen = null; return; }
+  const sk = sp.kind + (sp.p.x + ',' + sp.p.y + ',' + sp.p.z); if (S.snapSeen !== sk) { S.snapSeen = sk; sfx('snap'); }
   snapDot.geometry.setFromPoints([sp.p]); snapDot.material.color.set(k.color);
   snapEdge.geometry.copy(sp.edge.geometry); snapEdge.matrix.copy(sp.edge.matrixWorld); snapEdge.matrixAutoUpdate = false; snapEdge.matrixWorldNeedsUpdate = true; snapEdge.material.color.set(k.color);
   const r = view.getBoundingClientRect();
@@ -2130,7 +2142,7 @@ function ppPick() {
 }
 function ppHover() {
   const h = ppPick(), key = h && h.body + h.fi;
-  if (key !== S.hoverKey) { S.hover = h; S.hoverKey = key; refresh(); }
+  if (key !== S.hoverKey) { S.hover = h; S.hoverKey = key; if (h) sfx('hover'); refresh(); }
   setCursor('push', !h ? 'idle' : h.planar || S.doc.bodies[h.body]?.kind === 'Sketch' ? 'hot' : 'no');
 }
 function ppClick(e) {

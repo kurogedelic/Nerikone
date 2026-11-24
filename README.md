@@ -40,10 +40,17 @@ On Render's free plan: sign in with GitHub, New > Blueprint, pick this repositor
 - English or Japanese: the globe button in the top bar.
 - Files: drop STEP / STL / WRL / `.nrk` on the window; export STEP, STL, 3MF, OBJ, GLB, USD, WRL, and 2D drawings (SVG / DXF). The work is autosaved in the browser.
 
+## In the browser, without a server
+
+`python3 tools/build-web-local.py` builds `dist-web/`: the viewer plus the kernel running in your browser (SMLib compiled
+to WebAssembly, with Python through Pyodide). Serve it from any static host (`python3 -m http.server -d dist-web`); the
+documents never leave the visitor's machine. The first load downloads about 30 MB. Every command and export works the
+same as on the server. GitHub Pages builds it from this repository (`.github/workflows/pages.yml`).
+
 ## AI agents
 
 With the app running, `.mcp.json` registers `nerikone/mcp_server.py` for MCP clients; their edits show up live.
-In browsers that support WebMCP, the page offers the same commands as tools. See [AGENTS.md](AGENTS.md).
+In browsers that support WebMCP, the page offers the same commands as tools (this is also how an agent reaches the browser build). See [AGENTS.md](AGENTS.md).
 
 ## Licence and thanks
 
