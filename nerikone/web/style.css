@@ -366,3 +366,7 @@ input[type=color]{height:var(--ctl);padding:2px}
 .fade-b{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent)}
 .fade-t{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 32px);mask-image:linear-gradient(to bottom,transparent,#000 32px)}
 .fade-t.fade-b{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,transparent,#000 32px,#000 calc(100% - 32px),transparent)}
+
+/* box selection */
+#marquee{position:absolute;z-index:6;pointer-events:none;border:1px solid var(--acc);background:#f5a62320;border-radius:2px}
+#marquee.crossing{border-style:dashed;background:#4fc3f720;border-color:var(--acc2)}

@@ -282,6 +282,7 @@ const EN = {
   '情報': 'Info',
   '効果音': 'Sound effects',
   '解析': 'Analyze',
+  ' 個を選択': ' selected',
   '解析（干渉チェック）': 'Analyze (interference check)',
   '面積': 'Area',
   '寸法（旧ルーラー）': 'Dimension',

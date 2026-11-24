@@ -758,15 +758,73 @@ canvas.addEventListener('pointerdown', e => {
   const hd = pickHandle();
   if (hd) { e.stopImmediatePropagation(); startHandleDrag(e, hd); return; }
   const h = pick();
-  if (!h || e.altKey) { S.downEmpty = {x: e.clientX, y: e.clientY}; return; } // Alt+LMB / empty: orbit
+  if (!h && !e.altKey && !S.tool) { e.stopImmediatePropagation(); S.marq = {x0: e.clientX, y0: e.clientY, add: e.shiftKey, moved: false}; S.downEmpty = {x: e.clientX, y: e.clientY}; return; } // empty space: box selection
+  if (!h || e.altKey) { S.downEmpty = {x: e.clientX, y: e.clientY}; return; } // Alt+LMB: orbit
   e.stopImmediatePropagation(); // geometry: never start an orbit
   S.drag = {h, x0: e.clientX, y0: e.clientY, moved: false, shift: e.shiftKey};
 }, {capture: true});
 
+// ---- box selection: drag from left to right selects what is fully inside (window), right to left what the box touches (crossing)
+const marqueeEl = Object.assign(document.createElement('div'), {id: 'marquee', hidden: true}); view.append(marqueeEl);
+function marqueeRect(e, m = S.marq) {
+  const r = view.getBoundingClientRect(), x0 = Math.min(m.x0, e.clientX), x1 = Math.max(m.x0, e.clientX), y0 = Math.min(m.y0, e.clientY), y1 = Math.max(m.y0, e.clientY);
+  return {x0, y0, x1, y1, crossing: e.clientX < m.x0, left: x0 - r.left, top: y0 - r.top};
+}
+function marqueeDraw(e) {
+  const m = S.marq; if (!m.moved && Math.hypot(e.clientX - m.x0, e.clientY - m.y0) < 5) return;
+  m.moved = true; S.downEmpty = null; orbit.enabled = false;
+  const q = marqueeRect(e);
+  Object.assign(marqueeEl.style, {left: q.left + 'px', top: q.top + 'px', width: (q.x1 - q.x0) + 'px', height: (q.y1 - q.y0) + 'px'});
+  marqueeEl.classList.toggle('crossing', q.crossing); marqueeEl.hidden = false;
+}
+const inRect = (p, q) => p.x >= q.x0 && p.x <= q.x1 && p.y >= q.y0 && p.y <= q.y1;
+function segHitsRect(a, b, q) { // segment a-b against the rect (Liang-Barsky)
+  let t0 = 0, t1 = 1; const dx = b.x - a.x, dy = b.y - a.y;
+  for (const [p, d] of [[a.x - q.x0, -dx], [q.x1 - a.x, dx], [a.y - q.y0, -dy], [q.y1 - a.y, dy]]) {
+    if (d === 0) { if (p < 0) return false; } else { const t = p / d; if (d < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; } }
+  }
+  return true;
+}
+function marqueeEnd(e) {
+  const m = S.marq; S.marq = null; marqueeEl.hidden = true; orbit.enabled = true;
+  if (!m.moved) { if (!m.add) clearSel(); S.downEmpty = null; return; } // a plain click on empty space: select nothing
+  const q = marqueeRect(e, m), sel = m.add ? S.sel : {faces: [], edges: [], bodies: []}, tmp = new T.Vector3();
+  const world = (obj, pos, i) => tmp.fromBufferAttribute(pos, i).applyMatrix4(obj.matrixWorld).clone();
+  if (S.mode === 'edge') {
+    for (const l of visibleEdges()) {
+      const pos = l.geometry.attributes.position, pts = []; for (let i = 0; i < pos.count; i++) pts.push(screenOf(world(l, pos, i)));
+      const hit = q.crossing ? pts.some((p, i) => inRect(p, q) || (i && segHitsRect(pts[i - 1], p, q))) : pts.every(p => inRect(p, q));
+      if (hit && !sel.edges.some(x => x.body === l.userData.body && x.ei === l.userData.ei)) sel.edges.push({kind: 'edge', body: l.userData.body, ei: l.userData.ei, mid: l.userData.mid});
+    }
+  } else if (S.mode === 'face') {
+    for (const f of visibleFaces()) {
+      if (f.userData.mesh) continue;
+      const pos = f.geometry.attributes.position; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (let i = 0; i < pos.count; i++) { const p = screenOf(world(f, pos, i)); x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+      const hit = q.crossing ? !(x1 < q.x0 || x0 > q.x1 || y1 < q.y0 || y0 > q.y1) : (x0 >= q.x0 && x1 <= q.x1 && y0 >= q.y0 && y1 <= q.y1);
+      if (hit && !sel.faces.some(x => x.body === f.userData.body && x.fi === f.userData.fi)) {
+        const c = new T.Vector3().fromBufferAttribute(pos, 0).add(new T.Vector3().fromBufferAttribute(pos, 1)).add(new T.Vector3().fromBufferAttribute(pos, 2)).multiplyScalar(1 / 3);
+        sel.faces.push({kind: 'face', body: f.userData.body, fi: f.userData.fi, point: arr(c), normal: f.userData.normal, planar: f.userData.planar});
+      }
+    }
+  } else {
+    for (const n of Object.keys(S.groups)) {
+      if (S.hidden.has(n)) continue;
+      const bb = boxOf([n]); if (bb.isEmpty()) continue;
+      const pts = []; for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) pts.push(screenOf(new T.Vector3(x, y, z)));
+      const x0 = Math.min(...pts.map(p => p.x)), x1 = Math.max(...pts.map(p => p.x)), y0 = Math.min(...pts.map(p => p.y)), y1 = Math.max(...pts.map(p => p.y));
+      const hit = q.crossing ? !(x1 < q.x0 || x0 > q.x1 || y1 < q.y0 || y0 > q.y1) : (x0 >= q.x0 && x1 <= q.x1 && y0 >= q.y0 && y1 <= q.y1);
+      if (hit && !sel.bodies.includes(n)) sel.bodies.push(n);
+    }
+  }
+  S.sel = sel; S.form = null; S.feature = null; sfx('click'); refresh(); renderPanels();
+  const n = sel.faces.length + sel.edges.length + sel.bodies.length; if (n) toast(`${n} 個を選択`);
+}
 const DRAG_EDIT = false; // true: a drag on a face / edge in the select tool starts push/pull / fillet
 addEventListener('pointermove', e => {
   setRay(e);
   if (S.modal) { updateModal(); return; }
+  if (S.marq) { marqueeDraw(e); return; }
   if (S.tool === 'ruler' && !S.drag) { if (e.target === canvas) rulerHover(e); return; }
   if (S.tool === 'dim' && !S.drag) { if (e.target === canvas) dimHover(e); return; }
   if (S.tool === 'pushpull' && !S.drag) { if (e.target === canvas) ppHover(); return; }
@@ -784,8 +842,9 @@ addEventListener('pointermove', e => {
   if (!d.moved) {
     d.moved = true;
     if (d.handle) return;
-    // Dragging a face or an edge used to start a push/pull or a fillet by itself; operations now start only from a tool or a key
-    if (!DRAG_EDIT) return;
+    // Dragging a face or an edge used to start a push/pull or a fillet by itself; operations now start only from a tool or a key.
+    // A drag in the select tool is a box selection instead.
+    if (!DRAG_EDIT) { if (!S.tool) { S.marq = {x0: d.x0, y0: d.y0, add: d.shift, moved: true}; S.drag = null; orbit.enabled = false; marqueeDraw(e); } return; }
     const h = d.h;
     if (h.kind === 'face' && !h.mesh) { S.sel.faces = [h]; S.sel.edges = []; S.sel.bodies = []; S.mouse = {x: d.x0, y: d.y0}; setRay(e); pushModal(); }
     else if (h.kind === 'edge') {
@@ -812,6 +871,7 @@ addEventListener('pointermove', e => {
 
 addEventListener('pointerup', async e => {
   if (S.modal?.confirmOnUp && e.button === 0) return endModal(true);
+  if (S.marq) { marqueeEnd(e); return; }
   if (S.rdown && e.button === 2) {
     const moved = Math.hypot(e.clientX - S.rdown.x, e.clientY - S.rdown.y) > 4; S.rdown = null;
     if (!moved && e.target === canvas) contextMenu(e);
