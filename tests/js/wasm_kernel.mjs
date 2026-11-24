@@ -14,7 +14,7 @@ const here = path.dirname(new URL(import.meta.url).pathname), root = path.resolv
 const py = await loadPyodide();
 await py.loadPackage('numpy');
 py.registerJsModule('smjs', sm);
-for (const [f, dir] of [['smlibpy_shim.py', 'nerikone/web-local'], ['kernel.py', 'nerikone'], ['vrml.py', 'nerikone'], ['meshio.py', 'nerikone'], ['constraints.py', 'nerikone'], ['api.py', 'nerikone']])
+for (const [f, dir] of [['smlibpy_shim.py', 'nerikone/web-local'], ['kernel.py', 'nerikone'], ['vrml.py', 'nerikone'], ['meshio.py', 'nerikone'], ['constraints.py', 'nerikone'], ['expr.py', 'nerikone'], ['api.py', 'nerikone']])
   py.FS.writeFile(f, readFileSync(path.join(root, dir, f)));
 await py.runPythonAsync('import smlibpy_shim, kernel as K, api, json, math');
 

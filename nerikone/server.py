@@ -48,7 +48,7 @@ _BUILD = {"stamp": None, "id": "dev"}
 
 def build_id():
     """A short hex number from the contents of the code (viewer and kernel). It is shown in the status bar; it changes with the code."""
-    files = sorted(p for p in WEB.glob("*") if p.suffix in (".js", ".css", ".html")) + [pathlib.Path(__file__).parent / n for n in ("kernel.py", "server.py", "api.py", "vrml.py", "meshio.py", "constraints.py")]
+    files = sorted(p for p in WEB.glob("*") if p.suffix in (".js", ".css", ".html")) + [pathlib.Path(__file__).parent / n for n in ("kernel.py", "server.py", "api.py", "vrml.py", "meshio.py", "constraints.py", "expr.py")]
     stamp = tuple((str(f), f.stat().st_mtime_ns) for f in files if f.exists())
     if stamp != _BUILD["stamp"]:
         import hashlib
@@ -304,7 +304,7 @@ def watch_and_reload():
     """--reload: when the Python files change, save the shared document, restart this process, and load it back.
     The viewer files (web/) need no restart: reload the page."""
     here = pathlib.Path(__file__).parent
-    files = [here / n for n in ("kernel.py", "server.py", "vrml.py", "meshio.py", "constraints.py", "api.py")]
+    files = [here / n for n in ("kernel.py", "server.py", "vrml.py", "meshio.py", "constraints.py", "expr.py", "api.py")]
     stamp = lambda: [f.stat().st_mtime if f.exists() else 0 for f in files]
     seen = stamp()
     while True:

@@ -1694,17 +1694,24 @@ const DIAGRAMS = {
   'edge.chamfer': {svg: dgSvg('<path d="M30 130V56l36-36h144" stroke-width="2"/><path d="M30 130h180" opacity=".35"/><path class="dm" d="M30 56h36M66 20v36"/>'), slots: [['length', 36, 66]]},
   'body.shell': {svg: dgSvg('<path d="M120 20 200 62v52l-80 36-80-36V62z" fill="currentColor" fill-opacity=".08"/><path d="M120 52 168 76v34l-48 22-48-22V76z" fill="currentColor" fill-opacity=".14"/><path class="dm" d="M168 76l32-14"/>'), slots: [['thickness', 70, 24]]},
 };
+// A number field takes a number or an expression over the document's variables ("=wall_h + 0.2", see var.set).
+const isExpr = v => typeof v === 'string' && v.trim().startsWith('=');
+const numOf = t => isExpr(t) ? t.trim() : +t;
+function numInput(id, v, step, title) {
+  const shown = typeof v === 'number' ? +v.toFixed(6) : v;
+  return `<input id="${id}" class="num ${isExpr(v) ? 'expr' : ''}" type="text" inputmode="decimal" data-step="${step}" value="${esc(String(shown ?? ''))}" ${title ? `title="${title}"` : ''} spellcheck="false">`;
+}
 function renderForm(el, cmd, values, onSubmit, label, live, feature) {
   const bodies = Object.keys(S.doc.bodies), simple = q => ['float', 'int', 'bool', 'enum', 'body', 'vec3', 'str'].includes(q.type);
   const inputFor = q => {
     const v = values[q.name] ?? q.default, id = 'p_' + q.name;
     let input;
-    if (q.type === 'float' || q.type === 'int') input = `<input id="${id}" type="number" step="${q.type === 'int' ? 1 : 0.1}" value="${typeof v === 'number' ? +v.toFixed(6) : v}">`;
+    if (q.type === 'float' || q.type === 'int') input = numInput(id, v, q.type === 'int' ? 1 : 0.1);
     else if (q.type === 'bool') input = `<input id="${id}" type="checkbox" ${v ? 'checked' : ''}>`;
     else if (q.type === 'enum') input = `<select id="${id}">${q.options.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
     else if (q.type === 'body') input = `<select id="${id}">${[...new Set([v, ...bodies])].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     else if (q.type === 'str' || q.type === 'blob') input = `<input id="${id}" value="${esc(v ?? '')}" ${q.type === 'blob' ? 'readonly' : ''}>`;
-    else if (q.type === 'vec3') input = `<div class="vec">${[0, 1, 2].map(k => `<input id="${id}_${k}" type="number" step="0.1" value="${v?.[k] ?? 0}" title="${'XYZ'[k]}">`).join('')}</div>`;
+    else if (q.type === 'vec3') input = `<div class="vec">${[0, 1, 2].map(k => numInput(`${id}_${k}`, v?.[k] ?? 0, 0.1, 'XYZ'[k])).join('')}</div>`;
     else input = `<textarea id="${id}">${esc(JSON.stringify(v))}</textarea>`;
     return input;
   };
@@ -1743,10 +1750,10 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
     for (const q of cmd.params) {
       const id = 'p_' + q.name;
       if (!$(id) && !$(id + '_0')) { out[q.name] = values[q.name] ?? q.default; continue; }
-      if (q.type === 'float' || q.type === 'int') out[q.name] = +$(id).value;
+      if (q.type === 'float' || q.type === 'int') out[q.name] = numOf($(id).value);
       else if (q.type === 'bool') out[q.name] = $(id).checked;
       else if (['enum', 'body', 'str', 'blob'].includes(q.type)) out[q.name] = $(id).value;
-      else if (q.type === 'vec3') out[q.name] = [0, 1, 2].map(k => +$(id + '_' + k).value);
+      else if (q.type === 'vec3') out[q.name] = [0, 1, 2].map(k => numOf($(id + '_' + k).value));
       else out[q.name] = JSON.parse($(id).value);
     }
     return out;
@@ -1773,9 +1780,9 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
 // Drag a number's name sideways to change it (Shift: finer); typing in the box works as before. Live forms rebuild on release.
 document.addEventListener('pointerdown', e => {
   const l = e.target.closest?.('label.scrub'); if (!l || e.target.closest('input,select,textarea') || e.button !== 0) return;
-  const inp = l.querySelector('input[type=number]') || l.parentElement.querySelector('input[type=number]'); if (!inp) return;
+  const inp = l.querySelector('input[type=number],input.num') || l.parentElement.querySelector('input[type=number],input.num'); if (!inp || isExpr(inp.value)) return;
   e.preventDefault();
-  const x0 = e.clientX, v0 = parseFloat(inp.value) || 0, step = parseFloat(inp.step) || 0.1;
+  const x0 = e.clientX, v0 = parseFloat(inp.value) || 0, step = parseFloat(inp.step || inp.dataset.step) || 0.1;
   const mv = ev => { const v = v0 + Math.round((ev.clientX - x0) / 4) * step * (ev.shiftKey ? 0.1 : 1); inp.value = +v.toFixed(6); inp.dispatchEvent(new Event('input', {bubbles: true})); };
   const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); inp.dispatchEvent(new Event('change', {bubbles: true})); };
   addEventListener('pointermove', mv); addEventListener('pointerup', up);

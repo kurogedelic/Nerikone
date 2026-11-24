@@ -27,6 +27,7 @@ from typing import Any, Callable
 import smlibpy as sm
 
 import constraints
+import expr
 import meshio
 import vrml
 
@@ -88,8 +89,16 @@ def _vec(v, n=3):
     return out
 
 
+def _vecx(v, n=3):
+    """Like _vec, but a coordinate may be an expression ("=w / 2"), kept as text until the step runs."""
+    if isinstance(v, (list, tuple)) and len(v) == n and any(expr.is_expr(x) for x in v):
+        return [expr.check(x) if expr.is_expr(x) else list(_vec([x], 1))[0] for x in v]
+    return list(_vec(v, n))
+
+
 def coerce(cmd: Command, params: dict) -> dict:
-    """Validate and normalise params (hostile input: raise BadParams, never crash)."""
+    """Validate and normalise params (hostile input: raise BadParams, never crash). A number (or one coordinate) may be an
+    expression "=..." over variables (expr.py); it stays text here and is worked out when the step runs (resolve)."""
     out = {}
     known = {p.name for p in cmd.params}
     for k in params:
@@ -100,7 +109,9 @@ def coerce(cmd: Command, params: dict) -> dict:
         if v is None:
             raise BadParams(f"{cmd.id}: param '{p.name}' is required")
         try:
-            if p.type == "float":
+            if p.type in ("float", "int") and expr.is_expr(v):
+                v = expr.check(v)
+            elif p.type == "float":
                 v = float(v)
                 if not math.isfinite(v):
                     raise BadParams("non-finite")
@@ -114,9 +125,9 @@ def coerce(cmd: Command, params: dict) -> dict:
                 if v not in p.options:
                     raise BadParams(f"must be one of {p.options}")
             elif p.type in ("vec3", "face_ref"):
-                v = list(_vec(v))
+                v = _vecx(v)
             elif p.type in ("points", "edge_refs"):
-                v = [list(_vec(q, len(q) if len(q) in (2, 3) else 3)) for q in v]
+                v = [_vecx(q, len(q) if len(q) in (2, 3) else 3) for q in v]
             elif p.type == "grid":
                 v = [[list(_vec(q)) for q in row] for row in v]
                 if len(v) < 2 or len({len(r) for r in v}) != 1 or len(v[0]) < 2:
@@ -142,6 +153,46 @@ def coerce(cmd: Command, params: dict) -> dict:
         if p.max is not None and isinstance(v, (int, float)) and v > p.max:
             raise BadParams(f"{cmd.id}.{p.name}: must be <= {p.max}")
         out[p.name] = v
+    return out
+
+
+def resolve(cmd: Command, params: dict, variables: dict) -> dict:
+    """The params with every expression worked out from `variables`, checked again (ranges) as plain numbers."""
+    def val(x):
+        if expr.is_expr(x):
+            try:
+                return expr.evaluate(x, variables)
+            except expr.ExprError as e:
+                raise BadParams(str(e)) from None
+        return x
+    if not any(expr.is_expr(x) for v in params.values() for x in _leaves(v)):
+        return params
+    out = {}
+    for k, v in params.items():
+        if isinstance(v, list):
+            v = [[val(x) for x in q] if isinstance(q, list) else val(q) for q in v]
+        else:
+            v = val(v)
+        out[k] = v
+    return coerce(cmd, out)
+
+
+def _leaves(v):
+    if isinstance(v, list):
+        for x in v:
+            yield from _leaves(x)
+    else:
+        yield v
+
+
+class State(dict):
+    """The bodies after a step, plus the variables set so far (var.set)."""
+    vars: dict = {}
+
+
+def _state(bodies):
+    out = State(bodies)
+    out.vars = dict(getattr(bodies, "vars", {}))
     return out
 
 
@@ -837,6 +888,17 @@ class Dimension:
         return math.dist(self.a, self.b)
 
 
+@command("var.set", "Variable", "Annotate",
+         "Name a number for the steps after this one: any number there can then be an expression such as "
+         "\"=wall_h + 0.2\" (+ - * / **, parentheses, sqrt min max round abs, sin cos tan in degrees, pi). Change the "
+         "variable and every step that uses it follows.",
+         [P("var", "str", "w", "the name (letters, digits, _)"), P("value", "float", 1, "a number or an expression of earlier variables")])
+def _var(B, p):
+    if not expr.valid_name(p["var"]):
+        raise BadParams(f"'{p['var']}' cannot be a variable name: use letters, digits and _ (not starting with a digit), not a function name")
+    B.vars[p["var"]] = p["value"]
+
+
 @command("dim.add", "Dimension", "Annotate",
          "A dimension between the points `a` and `b`: their distance (axis aligned) or how far apart they are along X, Y "
          "or Z. `offset` moves the dimension line away from the points (the extension lines run back to them).",
@@ -1257,17 +1319,22 @@ class Document:
     # -- evaluation
     @property
     def bodies(self) -> dict:
-        return self.states[-1] if self.states else {}
+        return self.states[-1] if self.states else State()
+
+    @property
+    def variables(self) -> dict:
+        return dict(getattr(self.bodies, "vars", {}))
 
     def _apply(self, bodies, f, record=False):
         """Run step `f` on `bodies`. With `record`, the faces and edges it picks are kept in f["refs"] (see face_at)."""
-        out = dict(bodies)
+        out = _state(bodies)
         if not f.get("suppressed"):
             cmd = COMMANDS[f["cmd"]]
             params = f["params"]
             # steps saved before a parameter existed run with its default (documents stay readable as commands grow)
             if any(q.name not in params for q in cmd.params):
                 params = {**{q.name: copy.deepcopy(q.default) for q in cmd.params if q.name not in params}, **params}
+            params = resolve(cmd, params, out.vars)
             refs = f.get("refs")
             _REFS.ctx = {"hints": refs if isinstance(refs, dict) else {}, "record": {} if record else None}
             try:
@@ -1450,7 +1517,7 @@ class Document:
                               **({"solved": s} if (s := sketch_solution(f)) else {})}
                              for f in self.features],
                 "bodies": {n: {**body_info(b), **self._appearance(n)} for n, b in self.bodies.items()},
-                "units": self.units, "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
+                "units": self.units, "variables": self.variables, "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
 
 
 def _unknown(cid):
