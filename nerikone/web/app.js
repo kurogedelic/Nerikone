@@ -7,7 +7,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {icon, cmdIcon, ICONS, glyphFor} from './icons.js';
 import * as KM from './keymap.js';
 import {LANG, setLang, startTranslating} from './i18n.js';
-import {sfx, soundOn, setSound, soundVolume, setVolume, dragStart, dragValue, dragStop} from './sound.js';
+import {sfx, soundOn, setSound, soundVolume, setVolume, nextVolume, volumeLabel, dragStart, dragValue, dragStop} from './sound.js';
 
 const $ = id => document.getElementById(id);
 const V = a => new T.Vector3(a[0], a[1], a[2]);
@@ -447,7 +447,7 @@ async function commit(cmd, params, {keepSel} = {}) {
     S.feature = d.feature.id; S.form = null; S.lastCmd = cmd;
     if (!keepSel) S.sel = {faces: [], edges: [], bodies: []};
     applyState(d);
-    toast(`${TOOL_JA[cmd] || S.cmds[cmd]?.label || cmd} ✓`); sfx('commit');
+    toast(`${TOOL_JA[cmd] || S.cmds[cmd]?.label || cmd} ✓`); sfx(/delete$/.test(cmd) ? 'delete' : cmd === 'file.import' ? 'file' : 'commit');
     log('ok', `${S.cmds[cmd]?.label || cmd}  ${summarize(params)}`);
     return d;
   } catch (e) { reportError(e.message, S.cmds[cmd]?.label || cmd); await load(); }
@@ -548,7 +548,7 @@ function renderModalHud() {
 async function endModal(ok) {
   const md = S.modal; if (!md) return;
   S.modal = null; dragStop(); orbit.enabled = true; hud(''); md.ghosts?.forEach(g => g.parent?.remove(g)); md.ghosts = null; if (md.kind === 'grab') S.plus = false; S.cursorKey = null; // push/pull keeps its + while the tool stays active axisGuide.visible = triad.visible = moveLine.visible = false;
-  canvas.style.cursor = ''; S.cursorKey = null; applyToolCursor();
+  canvas.style.cursor = ''; S.cursorKey = null; applyToolCursor(); if (!ok) sfx('cancel');
   if (ok && md.value != null) { await idle(); await md.finish(md, md.value); }
   else { md.cancel?.(md); await idle(); await load(); }
   renderStatus();
@@ -1059,6 +1059,7 @@ function viewMenu(e) {
     ...(S.workPlane ? [{icon: 'blank', label: '作業平面を地面に戻す', run: () => run('plane.clear')}] : []),
     {icon: 'eye', label: 'すべて表示', key: K('hide.unhide'), run: () => run('hide.unhide')},
     {icon: soundOn() ? 'check' : 'blank', label: '効果音', run: () => run('sound.toggle')},
+    {icon: 'blank', label: `効果音の大きさ: ${volumeLabel()}`, run: () => { nextVolume(); sfx('click'); }},
     null, {header: 'パネル'},
     {icon: tabShown('side') ? 'check' : 'blank', label: 'アイテム', key: K('panel.side'), run: () => run('panel.side')},
     {icon: tabShown('insp') ? 'check' : 'blank', label: '情報', key: K('panel.inspector'), run: () => run('panel.inspector')},
@@ -1068,6 +1069,7 @@ function viewMenu(e) {
   ]);
 }
 document.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b && !b.disabled) run(b.dataset.act, e); });
+document.addEventListener('change', e => { if (e.target.matches?.('input[type=checkbox], select')) sfx('toggle'); });
 // interface sounds: a tick when the pointer enters a button, a pop when one is pressed
 let hoverBtn = null;
 document.addEventListener('mouseover', e => {
@@ -1216,11 +1218,11 @@ let menuItems = null, menuHl = -1; // the open menu's items, for arrow keys / En
 function showMenu(x, y, items) {
   const m = $('menu');
   m.innerHTML = items.map((it, i) => it?.header ? `<div class="mh">${esc(it.header)}</div>` : it ? `<div class="mi ${it.dis ? 'dis' : ''}" data-i="${i}">${icon(it.icon)}<span>${esc(it.label)}</span><span class="k">${esc(it.key || '')}</span></div>` : '<div class="msep"></div>').join('');
-  m.hidden = false; menuItems = items; menuHl = -1;
+  m.hidden = false; menuItems = items; menuHl = -1; sfx('open');
   m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px'; m.style.top = Math.max(8, Math.min(y, innerHeight - m.offsetHeight - 8)) + 'px';
   m.querySelectorAll('[data-i]').forEach(el => el.onclick = () => { closeMenus(); items[+el.dataset.i].run(); });
 }
-function closeMenus() { $('menu').hidden = true; menuItems = null; }
+function closeMenus() { if (!$('menu').hidden) sfx('close'); $('menu').hidden = true; menuItems = null; }
 addEventListener('pointerdown', e => { if (!e.target.closest('#menu')) closeMenus(); });
 addEventListener('keydown', e => { // an open menu takes the arrow keys, Enter and Esc before anything else
   if (!menuItems || $('menu').hidden || e.target.matches?.('input,textarea,select')) return;
@@ -1580,7 +1582,8 @@ A('panel.console', 'コンソール', '表示', () => openConsole());
 $('rcol').addEventListener('click', e => {
   const h = e.target.closest('.dhead'); if (!h || e.target.closest('button, input, select')) return;
   const k = Object.keys(RPANES).find(x => RPANES[x] === h.parentElement.id); if (!k) return;
-  rstate.shut = rstate.shut.includes(k) ? rstate.shut.filter(x => x !== k) : [...rstate.shut, k]; rsave(); rapply(); renderTop();
+  const wasShut = rstate.shut.includes(k); sfx(wasShut ? 'open' : 'close');
+  rstate.shut = wasShut ? rstate.shut.filter(x => x !== k) : [...rstate.shut, k]; rsave(); rapply(); renderTop();
 });
 function drag(el, move) { // pointer drag helper: move(dx, dy, start) on every move
   el.addEventListener('pointerdown', e => {
@@ -1708,7 +1711,7 @@ function snapPoint(e) {
   return g ? {p: g, snap: false} : null;
 }
 function rulerClick(e) {
-  const sp = snapPoint(e); if (!sp) return;
+  const sp = snapPoint(e); if (!sp) return; sfx('point');
   if (!S.rulerA) { S.rulerA = sp.p; }
   else { S.rulers.push({a: S.rulerA, b: sp.p}); log('info', `ルーラー: ${fmtDist(S.rulerA, sp.p)}`); S.rulerA = null; rulerPreview(null); drawRulers(); }
   renderCtx(); renderStatus();
@@ -1979,6 +1982,7 @@ function sketchHover(e) {
   applyToolCursor(q?.snap ? 'snap' : q ? 'hot' : 'no');
 }
 function sketchClick(e) {
+  sfx('point');
   if (!S.sk) {
     const pl = startPlane(e), q = onPlane(e, pl); if (!q) return;
     S.sk = {plane: pl, pts: [q.p], typed: '', pending: q.snap, startSnap: q.snap, lastClick: {t: performance.now(), x: e.clientX, y: e.clientY}}; renderStatus(); sketchPreview(q.p); return;
@@ -2282,6 +2286,7 @@ function dimHover(e) {
   dimRefresh(e);
 }
 function dimClick(e) {
+  sfx('point');
   if (!S.dimA) { const sp = snapPoint(e); if (sp) S.dimA = sp.p.clone(); }
   else if (!S.dimB) { const sp = snapPoint(e); if (sp && sp.p.distanceTo(S.dimA) > 1e-9) S.dimB = sp.p.clone(); }
   else {
@@ -2537,3 +2542,17 @@ if (S.public) setTimeout(() => toast('公開版: 使わないとモデルは消�
 const tick = () => { orbit.update(); drawNavGizmo(); updateViewLabel(); placeRulerLabels(); placeDimLabels(); R.render(scene, cam); };
 R.setAnimationLoop(tick);
 window.nerikone = {S, get cam() { return cam; }, orbit, handles, setMode, setRender, setView, frame, run, tick, registerWebMCP}; // debugging / UI tests
+
+// ------------------------------------------------------------------ scroll hints: fade the edge that has more content behind it
+const FADE = '#toolsbody, .dbody, #clog, .mlist, #plist';
+function fadeOne(el) {
+  const more = el.scrollHeight - el.clientHeight > 2;
+  el.classList.toggle('fade-t', more && el.scrollTop > 2);
+  el.classList.toggle('fade-b', more && el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+}
+let fadeQueued = false;
+const fadeAll = () => { if (fadeQueued) return; fadeQueued = true; requestAnimationFrame(() => { fadeQueued = false; document.querySelectorAll(FADE).forEach(fadeOne); }); };
+document.addEventListener('scroll', e => { if (e.target.matches?.(FADE)) fadeOne(e.target); }, true); // scroll does not bubble: capture it
+new MutationObserver(fadeAll).observe(document.body, {childList: true, subtree: true});
+addEventListener('resize', fadeAll);
+fadeAll();

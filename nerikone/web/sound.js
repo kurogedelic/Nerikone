@@ -8,6 +8,9 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify({on: enabled
 export const soundOn = () => enabled;
 export const soundVolume = () => volume;
 export function setSound(on) { enabled = !!on; save(); if (master) master.gain.value = enabled ? 0.18 * volume * 2 : 0; }
+export const VOLUMES = [['1/3', 0.25], ['2/3', 0.5], ['3/3', 0.85]];
+export const volumeLabel = () => (VOLUMES.reduce((p, q) => Math.abs(q[1] - volume) < Math.abs(p[1] - volume) ? q : p))[0];
+export function nextVolume() { const i = VOLUMES.findIndex(v => v[0] === volumeLabel()); setVolume(VOLUMES[(i + 1) % VOLUMES.length][1]); return volumeLabel(); }
 export function setVolume(v) { volume = Math.max(0, Math.min(1, v)); save(); if (master) master.gain.value = enabled ? 0.18 * volume * 2 : 0; }
 
 function audio() {
@@ -45,6 +48,10 @@ const SOUNDS = {
   undo:    () => note(0, {f: 740, f2: 494, dur: 0.1, gain: 0.45}),
   redo:    () => note(0, {f: 494, f2: 740, dur: 0.1, gain: 0.45}),
   error:   () => { note(0, {f: 196, f2: 147, dur: 0.16, type: 'sawtooth', gain: 0.35}); note(0, {f: 98, dur: 0.16, type: 'square', gain: 0.18}); },
+  point:   () => { note(0, {f: 1175, f2: 1047, dur: 0.05, gain: 0.5, partial: 0.25}); note(0, {f: 2350, dur: 0.02, gain: 0.15, type: 'triangle', delay: 0.01}); },
+  delete:  () => { note(0, {f: 440, f2: 220, dur: 0.12, gain: 0.45, type: 'triangle'}); note(0, {f: 330, f2: 165, dur: 0.14, gain: 0.3, type: 'triangle', delay: 0.05}); },
+  cancel:  () => note(0, {f: 520, f2: 330, dur: 0.09, gain: 0.35, partial: 0.15}),
+  file:    () => { note(0, {f: 392, dur: 0.07, gain: 0.4, partial: 0.2}); note(0, {f: 523, dur: 0.07, gain: 0.4, partial: 0.2, delay: 0.06}); note(0, {f: 784, dur: 0.12, gain: 0.4, partial: 0.2, delay: 0.12}); },
   toggle:  () => note(0, {f: 740, dur: 0.04, gain: 0.4}),
   open:    () => note(0, {f: 523, f2: 784, dur: 0.09, gain: 0.35, partial: 0.2}),
   close:   () => note(0, {f: 784, f2: 523, dur: 0.09, gain: 0.35, partial: 0.2}),

@@ -281,6 +281,7 @@ const EN = {
   'アイテム': 'Items',
   '情報': 'Info',
   '効果音': 'Sound effects',
+  '効果音の大きさ': 'Sound volume',
   '右パネル': 'Side panels',
   '右パネル表示': 'Toggle side panels',
   '履歴パネル表示': 'Toggle history',

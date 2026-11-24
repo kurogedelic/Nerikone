@@ -357,3 +357,12 @@ input[type=color]{height:var(--ctl);padding:2px}
 /* the selection bar at the bottom is a pill too: round container, round buttons */
 #ctxbar{border-radius:999px;padding-left:18px;padding-right:10px}
 #ctxbar button{border-radius:999px}
+
+/* Scrollable areas fade out at an edge that has more behind it (the classes come from the fade script in app.js). The tool strip's
+   scroller is its inner grid, so the panel's own background and border stay solid. */
+#tools{overflow:hidden}
+#toolsbody{max-height:calc(100vh - var(--top) - var(--status) - var(--tlh) - 4 * var(--pad) - 8px);overflow-y:auto;scrollbar-width:none}
+#toolsbody::-webkit-scrollbar{display:none}
+.fade-b{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent)}
+.fade-t{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 32px);mask-image:linear-gradient(to bottom,transparent,#000 32px)}
+.fade-t.fade-b{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,transparent,#000 32px,#000 calc(100% - 32px),transparent)}
