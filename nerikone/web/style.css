@@ -4,10 +4,10 @@
   color-scheme:dark;
   --bg:#17181a;--panel:#212225;--panel2:#292a2e;--glass:#25272bd9;--well:#17181a;
   --line:#383a3f;--hair:#ffffff1c;--fg:#e6e8ec;--dim:#8f959e;
-  --acc:#f5a623;--acc-bg:#ffffff17;--acc2:#4fc3f7;--err:#ff6b6b;--ok:#6fcf97;--btn:#33353a;--hover:#ffffff12;--press:#ffffff1f;
+  --acc:#ffc933;--acc-bg:#ffffff17;--acc2:#4fc3f7;--err:#ff6b6b;--ok:#6fcf97;--btn:#33353a;--hover:#ffffff12;--press:#ffffff1f;
   --x:#e5534b;--y:#6cc04a;--z:#4d8fe8;
   --r1:8px;--r2:16px;--r3:20px;
-  --sh1:0 4px 14px #0007;--sh2:0 8px 28px #0008;--sh3:0 16px 48px #000a;
+  --blur:blur(20px) saturate(1.3);--sh1:0 4px 14px #0007;--sh2:0 8px 28px #0008;--sh3:0 16px 48px #000a;
   --ease:cubic-bezier(.2,.8,.2,1);
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;--fs-s:11px;--fs-m:12px;--fs-l:14px; /* the only three text sizes */
   --top:52px;--status:24px;
@@ -39,12 +39,12 @@ button:disabled{opacity:.32;cursor:default;background:transparent}
 button.txt{border-color:var(--line);background:var(--btn);padding:0 10px}
 button.txt:hover{background:#3c3e44}
 button.pri{background:var(--acc);border-color:transparent;color:#17130a;font-weight:600}
-button.pri:hover{background:#ffb640}
+button.pri:hover{background:#ffd45e}
 :focus-visible{outline:2px solid var(--acc2);outline-offset:1px}
 input,textarea,select{background:var(--well);color:var(--fg);border:1px solid var(--line);border-radius:var(--r1);padding:4px 7px;
   font:inherit;width:100%;user-select:text;accent-color:var(--acc);transition:border-color .12s,box-shadow .12s}
 input:hover,textarea:hover,select:hover{border-color:#4a4d54}
-input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px #f5a62330}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px #ffc93330}
 input[type=number]{font-variant-numeric:tabular-nums}
 input[type=checkbox]{width:auto}
 input[type=color]{height:30px;padding:2px;cursor:pointer}
@@ -90,7 +90,7 @@ body.no-rcol #rcol,body.no-tools #tools{display:none}
 .grp{display:flex;align-items:center;gap:2px;min-width:0}.grp.trail{justify-content:flex-end}#top .grp.lead{justify-self:start}#top .grp.trail{justify-self:end}
 .seg{display:flex;background:var(--well);border-radius:8px;padding:2px;gap:2px;margin:0 4px}
 .seg button{height:26px;border-radius:6px}
-.seg button.on{background:#f5a62333;box-shadow:none}
+.seg button.on{background:#ffc93333;box-shadow:none}
 .sep{width:1px;height:20px;background:var(--line);margin:0 6px;flex:none}
 #doctitle{max-width:240px;padding:0 8px;gap:4px;font-weight:600}
 #doctitle .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -139,7 +139,7 @@ button.menu{padding:0 8px;gap:3px}button.menu .ti:last-child{font-size:13px;colo
 .irow input[type=color]{width:42px;height:24px;flex:none}
 .irow select{width:auto;min-width:110px}
 .ibtns{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}.ibtns button{height:26px;padding:0 9px;border:1px solid var(--line);background:var(--btn)}
-.ibtns button:hover{background:#3c3e44}.ibtns button.on{border-color:#f5a62380}
+.ibtns button:hover{background:#3c3e44}.ibtns button.on{border-color:#ffc93380}
 .ihint{color:var(--dim);font-size:var(--fs-s);padding:10px 8px;text-align:center}
 .field{display:grid;grid-template-columns:92px 1fr;align-items:center;gap:6px;margin:5px 0}
 .field label{color:var(--dim);font-size:var(--fs-s);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -171,7 +171,7 @@ details.more{margin-top:6px}details.more summary{cursor:pointer;color:var(--dim)
   border-radius:8px;cursor:pointer;color:var(--fg);gap:1px;transition:background .1s,color .1s}
 .chip:hover{background:var(--hover)}.chip.sel{background:var(--acc-bg);color:var(--acc);box-shadow:none}
 .chip small{font-size:var(--fs-s);color:var(--dim);max-width:42px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chip.sel small{color:#f5a623cc}
+.chip.sel small{color:#ffc933cc}
 .chip.off{opacity:.35}.chip.err{color:var(--err)}
 .chip.err::after{content:"";position:absolute;top:5px;right:6px;width:6px;height:6px;border-radius:3px;background:var(--err)}
 .chip .ti{font-size:20px}
@@ -212,7 +212,7 @@ details.more{margin-top:6px}details.more summary{cursor:pointer;color:var(--dim)
   border-radius:var(--r2);padding:4px;z-index:50;box-shadow:var(--sh3);animation:pop .12s var(--ease)}
 .mi{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:var(--r1);cursor:pointer}
 .mi .ti{font-size:16px;color:var(--dim)}
-.mi:hover,.mi.hl{background:#f5a62330}.mi:hover .ti,.mi.hl .ti{color:var(--acc)}
+.mi:hover,.mi.hl{background:#ffc93330}.mi:hover .ti,.mi.hl .ti{color:var(--acc)}
 .mi .k{margin-left:auto;padding-left:14px;color:var(--dim);font:var(--fs-s) var(--font)}
 .mi.dis{opacity:.4;pointer-events:none}
 .msep{height:1px;background:var(--hair);margin:4px 6px}
@@ -220,7 +220,7 @@ details.more{margin-top:6px}details.more summary{cursor:pointer;color:var(--dim)
 .pop{padding:6px;width:240px;display:flex;flex-direction:column;gap:8px}.pop .ph{display:flex;align-items:center;gap:6px;font-weight:600}
 .pop .dfoot{margin-top:0}
 .fin{display:flex;flex-wrap:wrap;gap:4px}.fin button{border:1px solid var(--line);height:26px;padding:0 9px}
-.fin button.on{border-color:#f5a62380}
+.fin button.on{border-color:#ffc93380}
 #palette{position:fixed;left:50%;top:92px;transform:translateX(-50%);width:min(460px,92vw);background:var(--panel2);border:1px solid var(--hair);
   border-radius:var(--r3);padding:6px;z-index:50;box-shadow:var(--sh3);animation:drop .14s var(--ease)}
 #palette .pin{display:flex;align-items:center;gap:8px;padding:4px 8px 8px;border-bottom:1px solid var(--hair);margin-bottom:4px;color:var(--dim)}
@@ -323,7 +323,7 @@ details.more{margin-top:6px}details.more summary{cursor:pointer;color:var(--dim)
    Frosted glass panels with large radii, one control height, our own checkbox / select / number
    fields instead of the browser's, and a 4px spacing grid. */
 :root{--ctl:24px}
-.glass,#top .grp{backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3)}
+.glass,#top .grp{backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
 button{min-width:var(--ctl);height:var(--ctl);padding:0 4px;border-radius:var(--r1)}
 .seg{border-radius:12px}.seg button{border-radius:9px}
 button.txt{padding:0 8px}
@@ -368,9 +368,13 @@ input[type=color]{height:var(--ctl);padding:2px}
 .fade-t.fade-b{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,transparent,#000 32px,#000 calc(100% - 32px),transparent)}
 
 /* box selection */
-#marquee{position:absolute;z-index:6;pointer-events:none;border:1px solid var(--acc);background:#f5a62320;border-radius:2px}
+#marquee{position:absolute;z-index:6;pointer-events:none;border:1px solid var(--acc);background:#ffc93320;border-radius:2px}
 #marquee.crossing{border-style:dashed;background:#4fc3f720;border-color:var(--acc2)}
 
 /* the build number: the left end of the status bar; it changes whenever the code does, so a stale cached copy is easy to spot */
 #buildid{flex:none;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.04em;text-transform:lowercase}
 #ctxbar button,#ctxbar .lbl{white-space:nowrap}
+
+/* light mode for weak GPUs (View menu): no blur, opaque panels */
+body.lite{--blur:none;--glass:#25272b}
+body.lite .glass,body.lite #top .grp,body.lite #ctxbar,body.lite #menu,body.lite #palette,body.lite #toast,body.lite .mbox,body.lite #console{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}

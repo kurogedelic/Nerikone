@@ -281,10 +281,41 @@ def _scirc(B, p):
 @command("sketch.polygon", "Polygon", "Sketch", "A closed polygonal region on a plane (points in plane coordinates).",
          [*PLANE, P("points", "points", [[0, 0], [1, 0], [0.5, 1]], "[x, y] outline")], creates=True)
 def _spoly(B, p):
-    pts = [tuple(q[:2]) for q in p["points"]]
-    if len(pts) < 3:
-        raise BadParams("need at least 3 points")
-    B[p["name"]] = _region(sm.Polygon(*pts, align=None).on(_plane(p)), p)
+    pts = _clean_outline([tuple(q[:2]) for q in p["points"]])
+    try:
+        B[p["name"]] = _region(sm.Polygon(*pts, align=None).on(_plane(p)), p)
+    except sm.ModelingError as e:
+        raise BadParams(f"these points do not make a region: {e}") from None
+
+
+def _clean_outline(pts):
+    """The corners of a closed outline, checked before the kernel sees them: repeated points (a closing click on the start point
+    repeats it) are dropped, and an outline with no area or one that crosses itself is refused with a reason."""
+    out = []
+    for q in pts:
+        if not out or math.dist(q, out[-1]) > 1e-9:
+            out.append(q)
+    if len(out) > 1 and math.dist(out[0], out[-1]) <= 1e-9:
+        out.pop()
+    if len(out) < 3:
+        raise BadParams("need at least 3 different points")
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    n = len(out)
+    for i in range(n):
+        a, b = out[i], out[(i + 1) % n]
+        for j in range(i + 2, n):
+            if i == 0 and j == n - 1:
+                continue  # the first and last segments meet at a corner
+            c, d = out[j], out[(j + 1) % n]
+            if cross(a, b, c) * cross(a, b, d) < 0 and cross(c, d, a) * cross(c, d, b) < 0:
+                raise BadParams("the outline crosses itself")
+    area2 = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(out, out[1:] + out[:1]))
+    size = max(math.dist(a, b) for a in out for b in out) or 1.0
+    if abs(area2) < 1e-9 * size * size:
+        raise BadParams("the points lie on one line: they enclose no area")
+    return out
 
 
 @command("region.extrude", "Push/pull region", "Sketch",

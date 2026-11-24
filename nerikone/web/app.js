@@ -136,7 +136,7 @@ function showMoveLine(a, b) {
   moveLine.geometry.setFromPoints([a, b]); moveLine.computeLineDistances();
   moveLine.material.dashSize = d * 0.012; moveLine.material.gapSize = d * 0.008; moveLine.visible = true;
 }
-const gizmo = new T.ArrowHelper(new T.Vector3(0, 0, 1), new T.Vector3(), 1, 0xf5a623, 0.25, 0.15);
+const gizmo = new T.ArrowHelper(new T.Vector3(0, 0, 1), new T.Vector3(), 1, 0xffc933, 0.25, 0.15);
 gizmo.visible = false; scene.add(gizmo);
 for (const part of [gizmo.line, gizmo.cone]) { // always drawn on top of the model
   part.renderOrder = 20; part.material.depthTest = false; part.material.depthWrite = false; part.material.transparent = true;
@@ -151,13 +151,13 @@ new ResizeObserver(resize).observe(view);
 
 // materials and shading
 const faceMat = c => new T.MeshStandardMaterial({color: c, roughness: 0.5, metalness: 0.05, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1});
-const M = {base: faceMat(0x9aa7bd), mesh: faceMat(0xb8a68a), hover: faceMat(0xffd27f), sel: faceMat(0xf5a623),
-  edge: new T.LineBasicMaterial({color: 0x15171a}), edgeHover: new T.LineBasicMaterial({color: 0xffd27f}), edgeSel: new T.LineBasicMaterial({color: 0xf5a623})};
+const M = {base: faceMat(0x9aa7bd), mesh: faceMat(0xb8a68a), hover: faceMat(0xffd27f), sel: faceMat(0xffc933),
+  edge: new T.LineBasicMaterial({color: 0x15171a}), edgeHover: new T.LineBasicMaterial({color: 0xffd27f}), edgeSel: new T.LineBasicMaterial({color: 0xffc933})};
 M.mesh.flatShading = true;
 // sketch regions: translucent blue, pulled towards the camera so they show on top of the face they were drawn on
 M.region = new T.MeshBasicMaterial({color: 0x4fc3f7, transparent: true, opacity: 0.45, side: T.DoubleSide, depthWrite: false,
   polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2});
-M.regionHi = M.region.clone(); M.regionHi.color.set(0xf5a623); M.regionHi.opacity = 0.7;
+M.regionHi = M.region.clone(); M.regionHi.color.set(0xffc933); M.regionHi.opacity = 0.7;
 const RENDER_MATS = {
   clay: new T.MeshPhysicalMaterial({color: 0xd9d4cc, roughness: 0.85, side: T.DoubleSide}),
   plastic: new T.MeshPhysicalMaterial({color: 0xe0482f, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2, side: T.DoubleSide}),
@@ -669,7 +669,7 @@ function pushModal() {
   const n = V(f.normal).normalize(), p0 = V(f.point);
   const m = startModal({
     label: '押し引き', icon: 'push', init: m => { m.t0 = closestOnAxis(p0, n) ?? 0; const a = dominantAxis(n);
-      showAxisGuide(p0, Math.abs(n.dot(AX[a])) > 0.999 ? a : n, Math.abs(n.dot(AX[a])) > 0.999 ? AXHEX[a] : 0xf5a623); },
+      showAxisGuide(p0, Math.abs(n.dot(AX[a])) > 0.999 ? a : n, Math.abs(n.dot(AX[a])) > 0.999 ? AXHEX[a] : 0xffc933); },
     compute: m => { const t = closestOnAxis(p0, n); return t == null ? 0 : t - m.t0; },
     apply: (m, v) => { if (Math.abs(v) < 1e-4) { m.cmd = null; return; } m.cmd = 'face.move'; m.params = {body: f.body, at: f.point, by: arr(n.clone().multiplyScalar(v))}; preview('api/exec', {cmd: 'face.move', params: m.params}); },
     finish: finishPreviewed, limitText: r => `${(-r.min).toFixed(2)} 〜 ${r.max.toFixed(2)}`,
@@ -1008,6 +1008,8 @@ function showTab(t, toggle) { // open the panel (or, from a button, fold it when
   rsave(); savePanes(); rapply(); renderTop();
 }
 const tabShown = t => !document.body.classList.contains('no-rcol') && !rstate.shut.includes(t);
+A('view.lite', '軽量表示（ぼかしなし）', '表示', () => { document.body.classList.toggle('lite'); try { localStorage.setItem('nerikone.lite', document.body.classList.contains('lite') ? '1' : '0'); } catch { /* session only */ } renderTop(); });
+try { if (localStorage.getItem('nerikone.lite') === '1') document.body.classList.add('lite'); } catch { /* default */ }
 A('sound.toggle', '効果音', '表示', () => { setSound(!soundOn()); if (soundOn()) sfx('toggle'); });
 A('panel.column', '右パネル表示', '表示', () => { document.body.classList.toggle('no-rcol'); rsave(); savePanes(); renderTop(); });
 A('panel.inspector', '情報パネル表示', '表示', () => showTab('insp', true));
@@ -1119,6 +1121,7 @@ function viewMenu(e) {
     {icon: S.workPlane ? 'check' : 'workplane', label: '作業平面を設定…', run: () => run('plane.set')},
     ...(S.workPlane ? [{icon: 'blank', label: '作業平面を地面に戻す', run: () => run('plane.clear')}] : []),
     {icon: 'eye', label: 'すべて表示', key: K('hide.unhide'), run: () => run('hide.unhide')},
+    {icon: document.body.classList.contains('lite') ? 'check' : 'blank', label: '軽量表示（ぼかしなし）', run: () => run('view.lite')},
     {icon: soundOn() ? 'check' : 'blank', label: '効果音', run: () => run('sound.toggle')},
     {icon: 'blank', label: `効果音の大きさ: ${volumeLabel()}`, run: () => { nextVolume(); sfx('click'); }},
     null, {header: 'パネル'},
@@ -2204,7 +2207,7 @@ function glyphOf(name) { // {ch, font} for the cursor: the icon's glyph and the 
   const c = getComputedStyle(i, '::before').content; i.remove();
   return c && c !== 'none' ? {ch: c.replace(/^["']|["']$/g, ''), font: 'tabler-icons'} : null;
 }
-const CURSOR_FILL = {idle: '#ffffff', hot: '#f5a623', snap: '#4fc3f7', no: '#9aa0a8'};
+const CURSOR_FILL = {idle: '#ffffff', hot: '#ffc933', snap: '#4fc3f7', no: '#9aa0a8'};
 function cursorImage({ch: glyph, font}, scale, state, plus = false) {
   const c = document.createElement('canvas'); c.width = c.height = 32 * scale;
   const g = c.getContext('2d'); g.scale(scale, scale);
@@ -2289,7 +2292,7 @@ function extrudeModal(f) {
   const n = V(f.normal).normalize(), p0 = V(f.point);
   const m = startModal({
     label: '引き出し', icon: 'push', init: m => { m.t0 = closestOnAxis(p0, n) ?? 0; const a = dominantAxis(n);
-      showAxisGuide(p0, Math.abs(n.dot(AX[a])) > 0.999 ? a : n, Math.abs(n.dot(AX[a])) > 0.999 ? AXHEX[a] : 0xf5a623); },
+      showAxisGuide(p0, Math.abs(n.dot(AX[a])) > 0.999 ? a : n, Math.abs(n.dot(AX[a])) > 0.999 ? AXHEX[a] : 0xffc933); },
     compute: m => { const t = closestOnAxis(p0, n); return t == null ? 0 : t - m.t0; },
     apply: (m, v) => { m.label = (v >= 0 ? '引き出し' : '押し込み') + (m.keep ? '（面を残す）' : ''); if (Math.abs(v) < 1e-4) { m.cmd = null; return; }
       m.cmd = 'face.extrude'; m.params = {body: f.body, at: f.point, amount: +v.toFixed(5), keep_face: !!m.keep}; preview('api/exec', {cmd: m.cmd, params: m.params}); },

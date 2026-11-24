@@ -7,7 +7,7 @@ const readyP = new Promise(r => { ready = r; });
 const box = Object.assign(document.createElement('div'), {id: 'kernelload'});
 box.style.cssText = 'position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;background:#17181a;color:#e6e8ec;font:12px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;transition:opacity .4s';
 box.innerHTML = '<div style="text-align:center;width:min(280px,70vw)"><div style="font-size:14px;margin-bottom:10px">Nerikone</div>' +
-  '<div style="height:4px;border-radius:2px;background:#ffffff1c;overflow:hidden"><div id="kernelbar" style="height:100%;width:8%;border-radius:2px;background:#f5a623;transition:width .6s cubic-bezier(.2,.8,.2,1)"></div></div>' +
+  '<div style="height:4px;border-radius:2px;background:#ffffff1c;overflow:hidden"><div id="kernelbar" style="height:100%;width:8%;border-radius:2px;background:#ffc933;transition:width .6s cubic-bezier(.2,.8,.2,1)"></div></div>' +
   '<div id="kernelmsg" style="color:#8f959e;margin-top:8px">カーネルを読み込み中…</div></div>';
 // until the first real step is reported, the bar creeps forward so it never looks stuck (the kernel's own download and compile come first)
 let creep = 8; const creeper = setInterval(() => { creep = Math.min(creep + 1.5, 30); const b = document.getElementById('kernelbar'); if (b && parseFloat(b.style.width) < creep) b.style.width = creep + '%'; }, 700);
