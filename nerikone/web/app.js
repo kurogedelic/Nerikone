@@ -996,12 +996,14 @@ function renderTop() {
     `<div class="seg">${SHADING.map(s => `<button data-shade="${s}" data-tip="${{solid: 'ソリッド', wire: 'ワイヤー', xray: 'X 線'}[s]}" data-key="${esc(KM.shortcutOf('view.shading'))}" ${on(!S.render && S.shading === s)}>${icon(s)}</button>`).join('')}${btn('view.render', 'render', 'レンダー', on(S.render))}</div>` +
     (S.render ? `<select id="material" style="width:auto">${['auto', 'clay', 'plastic', 'metal', 'glass'].map(m => `<option value="${m}" ${m === S.material ? 'selected' : ''}>${{auto: 'ボディごとの素材', clay: 'すべてクレイ', plastic: 'すべてプラスチック', metal: 'すべて金属', glass: 'すべてガラス'}[m]}</option>`).join('')}</select><select id="renderbg" style="width:auto">${Object.keys(BG).map(k => `<option value="${k}" ${k === S.renderBg ? 'selected' : ''}>${BG_JA[k]}</option>`).join('')}</select><button id="shot" data-tip="画像を保存">${icon('camera')}</button>` : '') +
     `<button id="snapmenu" class="menu ${S.snap.on ? 'on' : ''}" data-tip="スナップ" data-key="${esc(KM.shortcutOf('snap.toggle'))}">${icon('magnet')}<span>${S.snap.on ? (S.snap.grid ? S.snap.step : '入') : '切'}</span>${icon('chevron-down')}</button>` +
+    `<div class="seg" id="axseg">${['X', 'Y', 'Z'].map(ax => `<button data-axbtn="${ax}" style="color:var(--${ax.toLowerCase()});font-weight:600" data-tip="${ax} 軸に固定（もう一度で解除）" data-key="${ax}">${ax}</button>`).join('')}</div>` +
     `<button id="viewmenu" class="menu" data-tip="表示">${icon('view')}<span>表示</span>${icon('chevron-down')}</button>`;
   // trailing: search, language, inspector
   $('appbar').innerHTML = btn('command.palette', 'search', 'コマンド検索') +
     `<button id="langbtn" data-tip="${LANG === 'en' ? '日本語に切り替え' : 'Switch to English'}">${icon('language')}<span class="lang">${LANG === 'en' ? 'EN' : 'JA'}</span></button>` +
     btn('panel.column', 'inspector', '右パネル', on(!document.body.classList.contains('no-rcol')));
   $('langbtn').onclick = () => setLang(LANG === 'en' ? 'ja' : 'en');
+  updateAxisChips();
   $('doctitle').onclick = e => docMenu(e);
   $('viewmenu').onclick = e => viewMenu(e);
   $('snapmenu').onclick = e => snapMenu(e);
@@ -1168,7 +1170,9 @@ function renderCtx() {
     const bar = $('ctxbar'); bar.hidden = false;
     bar.innerHTML = `<span class="lbl">${icon(SK_ICON[S.tool])} ${SK_JA[S.tool]}を描く</span>` +
       SK_TOOLS.map(t => btn('sketch.' + t, SK_ICON[t], SK_JA[t], S.tool === t ? 'class="on"' : '')).join('') +
+      (S.tool === 'line' ? ['X', 'Y', 'Z'].map(ax => `<button data-lockax="${ax}" class="${S.sk?.lock === ax ? 'on' : ''}" ${S.sk ? '' : 'disabled'} style="color:var(--${ax.toLowerCase()});font-weight:600" data-tip="${ax} 軸に固定（もう一度で解除）" data-key="${ax}">${ax}</button>`).join('') : '') +
       `<button id="sk_exit" data-tip="終了" data-key="Esc">${icon('close')}</button>`;
+    bar.querySelectorAll('[data-lockax]').forEach(b => b.onclick = () => { if (S.sk) lockAxis(b.dataset.lockax); });
     $('sk_exit').onclick = () => setTool(null);
     return;
   }
@@ -1474,6 +1478,19 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
   }
 }
 
+// Axis constraints (X Y Z) live in the header for every tool and operation that has them: the current lock lights up, a second
+// press releases it. Which one applies: a running move / rotate / scale, the line tool while a line is being drawn, the dimension tool.
+function axisCtx() {
+  if (S.modal?.axes) return {lock: S.modal.axis, set: a => { S.modal.axis = S.modal.axis === a ? null : a; S.modal.onAxis?.(S.modal); updateModal(); renderStatus(); }};
+  if (S.tool === 'line' && S.sk) return {lock: S.sk.lock, set: a => lockAxis(a)};
+  if (S.tool === 'dim') return {lock: S.dimAxis, set: a => { S.dimAxis = S.dimAxis === a ? null : a; dimRefresh(); renderCtx(); renderStatus(); }};
+  return null;
+}
+function updateAxisChips() {
+  const c = axisCtx();
+  document.querySelectorAll('[data-axbtn]').forEach(b => { b.classList.toggle('on', !!c && c.lock === b.dataset.axbtn); b.disabled = !c; });
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-axbtn]'); if (b && !b.disabled) axisCtx()?.set(b.dataset.axbtn); });
 function renderStatus() { // the state only: what tool, what is selected, how many bodies, units (no instructions)
   const n = S.sel.faces.length + S.sel.edges.length + S.sel.bodies.length;
   const toolName = {pushpull: 'プッシュ/プル', ruler: 'ルーラー', dim: '寸法', line: 'ライン', rect: '矩形', circle: '円', poly: '多角形', orbit: 'オービット', pan: 'パン', zoom: 'ズーム'}[S.tool];
@@ -1481,6 +1498,7 @@ function renderStatus() { // the state only: what tool, what is selected, how ma
     n ? `<span>選択 <b>${n}</b></span>` : '', `<span>ボディ <b>${Object.keys(S.doc?.bodies || {}).length}</b></span>`,
     S.section ? '<span class="tool">断面表示</span>' : '', (S.modal ? S.modal.keep || S.modal.copy : S.plus && S.tool === 'pushpull') ? `<span class="tool">+ ${S.modal?.copy || S.tool !== 'pushpull' ? 'コピー' : '面を残す'}</span>` : '', S.workPlane ? '<span class="tool">作業平面</span>' : '',
     `<span>${esc(S.doc?.units || 'mm')}</span>`].filter(Boolean).join('');
+  updateAxisChips();
   $('status').innerHTML = `<button id="consolebtn" data-act="panel.console" data-tip="コンソール" data-key="${esc(KM.shortcutOf('panel.console'))}">${icon('terminal')}<span class="badge">${S.unseenErr || ''}</span></button><div class="hints"></div><div class="sinfo">${info}</div>`;
   $('consolebtn').classList.toggle('alert', !!S.unseenErr);
 }
@@ -1814,7 +1832,7 @@ function lockAxis(a) {
     k.lock = a;
   }
   if (S.skCur) S.skCur = lineAim({p: S.skCur}, {shiftKey: true})?.p;
-  sketchPreview(S.skCur); renderStatus();
+  sketchPreview(S.skCur); renderStatus(); renderCtx();
 }
 function lineAim(q, e) {
   const k = S.sk; k.axis = null; k.seg = null;
@@ -1915,6 +1933,7 @@ function shapePoints(cur) { // world outline of what would be built now
   return [];
 }
 function sketchPreview(cur) {
+  updateAxisChips();
   const pts = S.sk ? shapePoints(cur) : [];
   skLine.visible = pts.length > 1; if (skLine.visible) skLine.geometry.setFromPoints(pts);
   const dots = S.sk ? [...S.sk.pts, ...(cur ? [cur] : [])] : cur ? [cur] : [];
@@ -2003,7 +2022,7 @@ function sketchClick(e) {
 }
 function sketchKey(e) {
   const k = S.sk;
-  if (e.key === 'Escape') { e.preventDefault(); if (k) { S.sk = null; sketchPreview(); hud(''); renderStatus(); } else setTool(null); return true; }
+  if (e.key === 'Escape') { e.preventDefault(); if (k && k.lock) { lockAxis(k.lock); return true; } if (k) { S.sk = null; sketchPreview(); hud(''); renderStatus(); } else setTool(null); return true; }
   if (!k) return false;
   if (S.tool === 'line' && !k.arcEnd && ['KeyX', 'KeyY', 'KeyZ'].includes(e.code) && !e.metaKey && !e.ctrlKey && !e.altKey) {
     e.preventDefault(); lockAxis(e.code.slice(3)); return true;

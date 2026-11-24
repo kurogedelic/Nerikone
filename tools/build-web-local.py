@@ -38,8 +38,9 @@ for f in WEB.iterdir():
         shutil.copy2(f, OUT / f.name)
 html = (WEB / "index.html").read_text(encoding="utf-8")
 html = html.replace('<script type="module" src="app.js"></script>', '<script type="module" src="local.js"></script>\n<script type="module" src="app.js"></script>')
+html = html.replace("</head>", '<link rel="manifest" href="manifest.webmanifest">\n<meta name="theme-color" content="#17181a">\n<link rel="icon" href="icon.png">\n</head>')
 (OUT / "index.html").write_text(html, encoding="utf-8")
-for n in ("worker.js", "local.js"):
+for n in ("worker.js", "local.js", "manifest.webmanifest", "icon.png"):
     shutil.copy2(LOCAL / n, OUT / n)
 # Python side
 (OUT / "py").mkdir()
@@ -69,5 +70,14 @@ lic = CACHE / "PYODIDE-LICENSE"
 if not lic.exists():
     urllib.request.urlretrieve("https://raw.githubusercontent.com/pyodide/pyodide/main/LICENSE", lic)
 shutil.copy2(lic, py / "LICENSE")
+# offline cache: the service worker precaches every file, under a name made from a hash of all of them
+import hashlib
+files = sorted(p.relative_to(OUT).as_posix() for p in OUT.rglob("*") if p.is_file())
+h = hashlib.sha256()
+for f in files:
+    h.update(f.encode())
+    h.update((OUT / f).read_bytes())
+sw = (LOCAL / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", h.hexdigest()[:12]).replace("__FILES__", json.dumps(["./"] + files))
+(OUT / "sw.js").write_text(sw, encoding="utf-8")
 size = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file())
 print(f"dist-web: {size / 1e6:.1f} MB, {sum(1 for _ in OUT.rglob('*') if _.is_file())} files")

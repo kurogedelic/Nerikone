@@ -18,6 +18,11 @@ worker.onmessage = ev => {
   const done = pending.get(m.id); if (done) { pending.delete(m.id); done(m); }
 };
 
+// offline cache + installable app (see sw.js); only on https or localhost
+if ('serviceWorker' in navigator && !location.search.includes('nosw') && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* the page works without it */ });
+}
+
 const realFetch = window.fetch.bind(window);
 window.fetch = async (url, init = {}) => {
   const u = new URL(typeof url === 'string' ? url : url.url, location.href);
