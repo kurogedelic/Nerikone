@@ -253,3 +253,31 @@ def test_fuzz_every_parameter():
     finally:
         signal.signal(signal.SIGALRM, old)
     assert not bad, "\n".join(map(str, bad[:20]))
+
+
+# ---------------------------------------------------------------- reuse of earlier results
+
+def test_undo_redo_reuse_what_was_built():
+    d = build(("body.box", {}), ("face.extrude", {"body": "Box1", "at": [0, 0, 1], "amount": 1}))
+    built = d.bodies["Box1"]
+    d.undo()
+    d.redo()
+    assert d.bodies["Box1"] is built  # not built again
+
+
+def test_an_edit_upstream_builds_again():
+    d = build(("body.box", {}), ("face.extrude", {"body": "Box1", "at": [0, 0, 1], "amount": 1}))
+    d.update(1, {"height": 4})
+    assert info(d, "Box1")["volume"] == approx(4 * 5)
+    d.undo()
+    assert info(d, "Box1")["volume"] == approx(12)
+
+
+def test_failures_are_not_remembered():
+    d = K.Document()
+    d.load_json({"features": [{"id": 1, "cmd": "file.import", "params": {"blob": "f" * 16, "format": "stl", "name": "Imp"}}]})
+    assert d.errors  # the file is not there yet
+    K.BLOBS["f" * 16] = K.export(build(("body.box", {})), "stl")
+    d.rebuild(0)
+    assert not d.errors and "Imp" in d.bodies
+    del K.BLOBS["f" * 16]

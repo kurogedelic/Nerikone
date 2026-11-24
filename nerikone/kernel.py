@@ -11,6 +11,7 @@ so references survive upstream changes as long as the geometry is still near tha
 from __future__ import annotations
 
 import base64
+import collections
 import copy
 import hashlib
 import json
@@ -1209,6 +1210,8 @@ class Document:
         self.undo_stack: list[str] = []
         self.redo_stack: list[str] = []
         self.units = "mm"  # what one model unit means, for display and export
+        self._keys: list[str] = []  # per state: a hash of every step up to it
+        self._cache: collections.OrderedDict = collections.OrderedDict()  # that hash -> the bodies it built (undo / redo reuse them)
 
     def set_units(self, units):
         if units not in UNITS:
@@ -1283,19 +1286,44 @@ class Document:
                     f.pop("refs", None)
         return out
 
+    CACHE_STATES = 200
+
+    def _key(self, i, f):
+        prev = self._keys[i - 1] if i else ""
+        return hashlib.sha1((prev + json.dumps(f, sort_keys=True)).encode()).hexdigest()
+
+    def _remember(self, key, state):
+        self._cache[key] = state
+        self._cache.move_to_end(key)
+        while len(self._cache) > self.CACHE_STATES:
+            self._cache.popitem(last=False)
+
     def rebuild(self, start=0, record=None):
-        """Evaluate the steps from `start` on. The step whose id is `record` keeps what it picks (its own inputs changed)."""
+        """Evaluate the steps from `start` on. The step whose id is `record` keeps what it picks (its own inputs changed).
+        A step whose content and history are unchanged since it last built (undo, redo, reopening) reuses that result."""
         start = max(0, min(start, len(self.states)))
         self.states = self.states[:start]
+        self._keys = self._keys[:start]
         for i in range(start, len(self.features)):
             f = self.features[i]
             prev = self.states[-1] if self.states else {}
             self.errors.pop(f["id"], None)
+            recording = f["id"] == record
+            key = self._key(i, f)
+            if not recording and key in self._cache:
+                self._cache.move_to_end(key)
+                self.states.append(self._cache[key])
+                self._keys.append(key)
+                continue
             try:
-                self.states.append(self._apply(prev, f, record=f["id"] == record))
+                state = self._apply(prev, f, record=recording)
+                key = self._key(i, f)  # recording may have changed the step's refs
+                self._remember(key, state)  # only what built is kept: a failure may succeed later (a file loaded since)
+                self.states.append(state)
             except Exception as e:  # a failed feature passes the model through, like any CAD timeline
                 self.errors[f["id"]] = f"{type(e).__name__}: {e}"
                 self.states.append(prev)
+            self._keys.append(key)
 
     def _auto_name(self, cmd, params):
         if cmd.creates and not params.get("name"):
@@ -1321,6 +1349,10 @@ class Document:
         self._push_undo()
         self.next_id += 1
         self.features.append(f)
+        self._keys = self._keys[:len(self.states)]
+        key = self._key(len(self.states), f)
+        self._remember(key, new)
+        self._keys.append(key)
         self.states.append(new)
         return f
 
