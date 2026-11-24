@@ -4,6 +4,9 @@
 import * as T from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {Line2} from 'three/addons/lines/Line2.js';
+import {LineMaterial} from 'three/addons/lines/LineMaterial.js';
+import {LineGeometry} from 'three/addons/lines/LineGeometry.js';
 import {icon, cmdIcon, ICONS, glyphFor} from './icons.js';
 import * as KM from './keymap.js';
 import {LANG, setLang, startTranslating} from './i18n.js';
@@ -108,14 +111,17 @@ function buildGrid() {
   buildAxes(size / 2);
 }
 const axesLines = new T.Group(); scene.add(axesLines);
-function buildAxes(half) { // X and Y run as far as the grid does
+function buildAxes(half) { // X and Y run as far as the grid does, 2 px wide and at full strength (fat lines: plain ones are 1 px)
   axesLines.clear();
-  for (const [a, c] of [['X', 0xe5534b], ['Y', 0x6cc04a]]) {
-    const g = new T.BufferGeometry().setFromPoints([AX[a].clone().multiplyScalar(-half), AX[a].clone().multiplyScalar(half)]);
-    const l = new T.Line(g, new T.LineBasicMaterial({color: c, transparent: true, opacity: 0.75, depthWrite: false}));
-    l.renderOrder = -1; axesLines.add(l);
+  const light = document.documentElement.dataset.theme === 'light';
+  for (const [a, c] of [['X', light ? 0xd93a32 : 0xff5a50], ['Y', light ? 0x3f9a2a : 0x72d64e]]) {
+    const e = AX[a].clone().multiplyScalar(half), g = new LineGeometry().setPositions([-e.x, -e.y, -e.z, e.x, e.y, e.z]);
+    const m = new LineMaterial({color: c, linewidth: 2, transparent: true, depthWrite: false, toneMapped: false});
+    m.resolution.set(innerWidth, innerHeight);
+    const l = new Line2(g, m); l.renderOrder = -1; l.raycast = () => {}; axesLines.add(l);
   }
 }
+addEventListener('resize', () => axesLines.children.forEach(l => l.material.resolution.set(innerWidth, innerHeight)));
 buildGrid();
 const ground = new T.Mesh(new T.PlaneGeometry(400, 400), new T.ShadowMaterial({opacity: 0.25}));
 ground.receiveShadow = true; ground.visible = false; scene.add(ground);
