@@ -515,6 +515,8 @@ const EN = {
   '球': 'Sphere',
   '幅': 'width',
   '色': 'Colour',
+  'グループを作るか、ボディを選択': 'Make a group or select a body',
+  '部品表を書き出す (.csv)': 'Export the parts list (.csv)',
   '部品をグループにする': 'Group the parts',
   '部品表 (.csv)': 'Parts list (.csv)',
   '一覧': 'Lists',

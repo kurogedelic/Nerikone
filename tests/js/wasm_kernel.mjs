@@ -45,6 +45,32 @@ assert not d.errors and len(r)==1 and abs(r[0].z-3.93)<0.01, [(c.x,c.y,c.z) for 
 d.execute('asm.mate',{'body':'B','at':[5,5,4.5],'target':'A','target_at':[0,0,1]})
 bb=d.bodies['B'].bbox(); assert [round(x,4) for x in bb.min]==[4.5,4.5,1], list(bb.min)
 d.update(1,{'height':6}); assert not d.errors and abs(d.bodies['B'].bbox().min.z-3)<1e-6`,
+  groups_and_parts: `d=K.Document(); d.execute('body.box',{'name':'A'}); d.execute('body.box',{'name':'B','at':[5,0,0]})
+d.execute('asm.group',{'group':'G','bodies':['A','B']}); d.execute('asm.move',{'group':'G','translate':[0,0,3]})
+assert d.groups=={'G':['A','B']} and abs(d.bodies['B'].bbox().min.z-2)<1e-6
+rows=K.measure(d,'parts',{})['parts']; assert rows[0]['qty']==2, rows
+assert K.export(d,'csv').decode().startswith('Item,Qty')`,
+  drawing_and_measure: `d=K.Document(); d.set_units('m'); d.execute('body.box',{'length':8,'width':6,'height':3})
+svg=K.export(d,'svg').decode(); assert '8 m' in svg and '<text' in svg, svg[:200]
+m=K.measure(d,'body',{'bodies':['Box1']})['bodies']['Box1']; assert m['size']==[8,6,3] and abs(m['volume']-144)<1e-6, m`,
+  import_place: `d=K.Document(); d.execute('body.box',{'at':[10,10,10],'name':'S'}); data=K.export(d,'step')
+e=K.Document(); e.execute('file.import',{'blob':K.add_blob(data),'format':'step','name':'I','place':'ground'})
+bb=e.bodies['I'].bbox(); assert [round(x,4) for x in bb.min]==[-1,-1,0], list(bb.min)`,
+  every_command: `bad=[]
+base=K.Document(); base.execute('body.box',{'name':'Box1'}); base.execute('body.box',{'name':'Box2','at':[5,0,0]}); base.execute('sketch.rect',{'name':'Rectangle1'})
+for cid,cmd in sorted(K.COMMANDS.items()):
+    if cid=='file.import': continue
+    params={q.name:q.default for q in cmd.params if q.default is not None and q.name!='name'}
+    for key in ('body','target'):
+        if any(q.name==key for q in cmd.params): params[key]='Rectangle1' if cid=='region.extrude' else 'Box1'
+    if cid=='body.boolean': params['tools']=['Box2']
+    if cid=='asm.group': params['bodies']=['Box1','Box2']
+    if cid=='asm.mate': params.update({'target':'Box2','at':[0,0,1],'target_at':[5,0,1]})
+    d=K.Document(); d.load_json(base.to_json())
+    try: d.execute(cid,params)
+    except K.BadParams: pass
+    except Exception as e: bad.append(cid+': '+type(e).__name__+': '+str(e)[:80])
+assert not bad, bad`,
   api: `code,_,data,_=api.handle('POST','/api/exec',{},json.dumps({'cmd':'body.sphere','params':{}}).encode())
 assert code==200 and 'Sphere1' in json.loads(data)['scene']
 code,_,data,_=api.handle('POST','/api/exec',{},b'{"cmd":"body.box","params":{"length":-1}}'); assert code==400`,

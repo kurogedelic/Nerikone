@@ -1372,8 +1372,9 @@ def _fit_import(shapes, scale, place):
     lo, hi = [1e300] * 3, [-1e300] * 3
     for s in shapes:
         bb = s.bbox()
-        lo = [min(lo[i], bb.min[i]) for i in range(3)]
-        hi = [max(hi[i], bb.max[i]) for i in range(3)]
+        bmin, bmax = list(bb.min), list(bb.max)
+        lo = [min(lo[i], bmin[i]) for i in range(3)]
+        hi = [max(hi[i], bmax[i]) for i in range(3)]
     dx, dy = -(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2
     dz = -lo[2] if place == "ground" else -(lo[2] + hi[2]) / 2
     return [s.translate(dx, dy, dz) for s in shapes]
@@ -1729,7 +1730,8 @@ def measure(doc: "Document", kind: str, p: dict) -> dict:
         for n in names():
             b = _body(B, n, SOLIDS + (sm.Sketch,))
             bb = b.bbox()
-            d = {"kind": type(b).__name__, "size": [round(bb.max[i] - bb.min[i], 6) for i in range(3)]}
+            bmin, bmax = list(bb.min), list(bb.max)
+            d = {"kind": type(b).__name__, "size": [round(bmax[i] - bmin[i], 6) for i in range(3)]}
             if isinstance(b, sm.Part):
                 mp = b.mass_properties()
                 d.update(volume=round(mp.volume, 6), area=round(mp.area, 6), center=_v(mp.center))
@@ -1893,7 +1895,8 @@ def parts_list(doc: "Document", names=None) -> list[dict]:
         if names and n not in names or not isinstance(b, (sm.Part, sm.Shell, sm.Mesh)) or isinstance(b, (sm.Sketch, Dimension)):
             continue
         bb = b.bbox()
-        size = [round(bb.max[i] - bb.min[i], 6) for i in range(3)]
+        lo, hi = list(bb.min), list(bb.max)  # (iterated, not indexed: the browser build's vectors are not sequences)
+        size = [round(hi[i] - lo[i], 6) for i in range(3)]
         vol = round(b.volume, 6) if isinstance(b, sm.Part) else None
         app = doc._appearance(n)
         key = (vol, tuple(sorted(size)), app.get("finish"), type(b).__name__)
@@ -1937,9 +1940,10 @@ def _svg_with_dimensions(svg, views, units):
     for v in views:
         try:
             bb = v.bbox()
+            lo, hi = list(bb.min), list(bb.max)
         except Exception:
             continue
-        ax, bx, ay, by = bb.min[0], bb.max[0], -bb.max[1], -bb.min[1]  # the SVG's y runs down
+        ax, bx, ay, by = lo[0], hi[0], -hi[1], -lo[1]  # the SVG's y runs down
         for horizontal, a, b, val in ((True, ax, bx, bx - ax), (False, ay, by, by - ay)):
             if val < 1e-9:
                 continue

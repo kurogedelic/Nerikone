@@ -58,6 +58,13 @@ def _cls(name):  # a Python class per JS class, so type(x).__name__ is 'Part', '
     return c
 
 class _Meta(type):
+    def __getattr__(cls, name):  # class-level members of the JS constructor: sm.Axis.X, sm.Axis.Z ...
+        v = cls.__dict__.get('_v')
+        if v is None or name.startswith('__'): raise AttributeError(name)
+        js = getattr(v, _camel(name), None)
+        if js is None: js = getattr(v, name, None)
+        if js is None: raise AttributeError(name)
+        return _wrap(js)
     def __instancecheck__(cls, obj):
         if type.__instancecheck__(cls, obj): return True
         return type.__instancecheck__(W, obj) and obj._js.constructor.name == cls.__name__

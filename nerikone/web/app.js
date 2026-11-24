@@ -1724,11 +1724,7 @@ function groupsPanel() {
 }
 function bindVarsPanel() {
   document.querySelectorAll('#i_groups [data-gsel]').forEach(b => b.onclick = () => { S.modes.add('body'); S.sel = {faces: [], edges: [], bodies: [...(S.doc.groups[b.dataset.gsel] || [])]}; refresh(); renderPanels(); });
-  $('i_var_add')?.addEventListener('click', async () => {
-    const name = prompt('変数の名前（英字・数字・_）', 'w'); if (!name) return;
-    const value = prompt(`${name} の値（数字か =式）`, '1'); if (value == null || value === '') return;
-    await commit('var.set', {var: name.trim(), value: numOf(value)});
-  });
+  $('i_var_add')?.addEventListener('click', () => run('var.add'));
   document.querySelectorAll('#i_vars [data-var]').forEach(row => {
     const n = row.dataset.var, inp = row.querySelector('input'), f = varStep(n);
     inp?.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
@@ -3013,6 +3009,16 @@ A('edit.mate', '合わせ（面と面）', '編集', () => {
   if (f.length !== 2 || f[0].body === f[1].body) return toast('別々のボディの面を 2 つ選択（動かす方、動かさない方の順）');
   openForm('asm.mate');
 });
+A('edit.movegroup', 'グループを動かす', '編集', () => {
+  if (!Object.keys(S.doc.groups || {}).length && !selBodies().length) return toast('グループを作るか、ボディを選択');
+  openForm('asm.move');
+});
+A('var.add', '変数を追加', '編集', async () => {
+  const name = prompt('変数の名前（英字・数字・_）', 'w'); if (!name) return;
+  const value = prompt(`${name} の値（数字か =式）`, '1'); if (value == null || value === '') return;
+  await commit('var.set', {var: name.trim(), value: numOf(value)});
+});
+A('file.partslist', '部品表を書き出す (.csv)', 'ファイル', () => download('csv'));
 A('edit.group', '部品をグループにする', '編集', () => {
   if (S.sel.bodies.length < 1) return toast('ボディを選択');
   openForm('asm.group');
