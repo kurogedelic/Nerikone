@@ -485,3 +485,4 @@ button:hover .pic .hole,.mi:hover .pic .hole{transform:scale(1)}                
 .cons .hint{color:var(--dim);font-size:var(--fs-s);padding:4px 2px}
 /* a number written as an expression over variables (=W/2) */
 input.num.expr{color:var(--acc)}
+input.num.expr.bad{color:var(--err)}

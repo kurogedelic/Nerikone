@@ -1721,6 +1721,37 @@ function bindVarsPanel() {
 }
 // A number field takes a number or an expression over the document's variables ("=wall_h + 0.2", see var.set).
 const isExpr = v => typeof v === 'string' && v.trim().startsWith('=');
+// The same arithmetic as the kernel's expr.py, to show the result while typing (the kernel decides: this only previews).
+const EXPR_FN = {sqrt: Math.sqrt, abs: Math.abs, min: Math.min, max: Math.max, round: Math.round, floor: Math.floor, ceil: Math.ceil, hypot: Math.hypot,
+  sin: d => Math.sin(d * Math.PI / 180), cos: d => Math.cos(d * Math.PI / 180), tan: d => Math.tan(d * Math.PI / 180),
+  asin: x => Math.asin(x) * 180 / Math.PI, acos: x => Math.acos(x) * 180 / Math.PI, atan: x => Math.atan(x) * 180 / Math.PI, atan2: (y, x) => Math.atan2(y, x) * 180 / Math.PI};
+function evalExpr(src, vars) { // -> number, or throws Error with a short reason
+  const t = src.trim().replace(/^=/, ''), tok = [...t.matchAll(/\s*(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+|[A-Za-z_]\w*|\*\*|[-+*/%(),])/g)];
+  if (!tok || tok.map(m => m[0]).join('').replace(/\s/g, '') !== t.replace(/\s/g, '')) throw new Error('式を読めません');
+  const q = tok.map(m => m[1]); let i = 0;
+  const peek = () => q[i], next = () => q[i++];
+  const atom = () => {
+    const x = next(); if (x === undefined) throw new Error('式が途中です');
+    if (x === '(') { const v = sum(); if (next() !== ')') throw new Error('かっこが閉じていません'); return v; }
+    if (x === '-') return -pow(); if (x === '+') return pow();
+    if (/^[\d.]/.test(x)) return parseFloat(x);
+    if (x === 'pi') return Math.PI; if (x === 'e') return Math.E;
+    if (peek() === '(') { next(); const a = []; if (peek() !== ')') { do a.push(sum()); while (peek() === ',' && next()); } if (next() !== ')') throw new Error('かっこが閉じていません');
+      if (!EXPR_FN[x]) throw new Error(`関数 ${x} はありません`); return EXPR_FN[x](...a); }
+    if (!(x in vars)) throw new Error(`変数 ${x} がありません`); return vars[x];
+  };
+  const pow = () => { const a = atom(); return peek() === '**' ? (next(), a ** pow()) : a; };
+  const prod = () => { let a = pow(); while (['*', '/', '%'].includes(peek())) { const o = next(), b = pow(); a = o === '*' ? a * b : o === '/' ? a / b : a % b; } return a; };
+  const sum = () => { let a = prod(); while (['+', '-'].includes(peek())) { const o = next(), b = prod(); a = o === '+' ? a + b : a - b; } return a; };
+  const v = sum(); if (i < q.length) throw new Error('式を読めません'); if (!Number.isFinite(v)) throw new Error('数になりません'); return v;
+}
+document.addEventListener('input', e => { // a number field that holds an expression says what it comes to
+  const el = e.target; if (!el.classList?.contains('num')) return;
+  const on = isExpr(el.value); el.classList.toggle('expr', on);
+  if (!on) { el.removeAttribute('data-tip'); return; }
+  try { el.dataset.tip = '= ' + fmtN(evalExpr(el.value, S.doc.variables || {})); el.classList.remove('bad'); }
+  catch (err) { el.dataset.tip = err.message; el.classList.add('bad'); }
+});
 const numOf = t => isExpr(t) ? t.trim() : +t;
 function numInput(id, v, step, title) {
   const shown = typeof v === 'number' ? +v.toFixed(6) : v;
@@ -1788,7 +1819,7 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
     const cons = () => JSON.parse(JSON.stringify(feature.params.constraints || []));
     el.querySelectorAll('[data-cval]').forEach(i => i.addEventListener('change', e => { e.stopPropagation(); const c = cons(), k = +i.dataset.cval; c[k][c[k].length - 1] = numOf(i.value); setConstraints(feature, c); }));
     el.querySelectorAll('[data-cdel]').forEach(b => b.onclick = () => { const c = cons(); c.splice(+b.dataset.cdel, 1); updateFeature(feature.id, {constraints: c}); });
-    el.querySelectorAll('[data-cadd]').forEach(b => b.onclick = () => setConstraints(feature, [...cons(), cp.adds[+b.dataset.cadd]]));
+    el.querySelectorAll('[data-cadd]').forEach(b => b.onclick = () => { const c = cp.adds[+b.dataset.cadd]; setConstraints(feature, [...cons(), c[0] === 'fix' ? c.slice(0, 2) : c]); });
   }
   if (live) {
     el.querySelectorAll('input:not([data-cval]),select,textarea').forEach(i => i.addEventListener('change', go)); // parametric: rebuild on edit
@@ -2461,10 +2492,12 @@ function conPanel(f) {
   const len = i => { const [a, b] = segs[i]; return Math.hypot(b[0] - a[0], b[1] - a[1]); };
   const ang = (i, j) => { const d = s => [segs[s][1][0] - segs[s][0][0], segs[s][1][1] - segs[s][0][1]], a = d(i), b = d(j);
     return Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) * 180 / Math.PI; };
+  const P = sketchPts(f), n = P.length, endPt = (i, end) => (end ? (i + 1) % n : i);
   const adds = sel.length === 1 ? [['horizontal', sel[0]], ['vertical', sel[0]], ['length', sel[0], +len(sel[0]).toFixed(4)],
+    ['fix', endPt(sel[0], 0), '始点'], ['fix', endPt(sel[0], 1), '終点'],
     ...(segs[sel[0]][2] ? [['radius', sel[0], +(len(sel[0]) * (1 + segs[sel[0]][2] ** 2) / (4 * Math.abs(segs[sel[0]][2]))).toFixed(4)]] : [])]
     : sel.length === 2 ? [['parallel', ...sel], ['perpendicular', ...sel], ['equal', ...sel], ['angle', ...sel, +ang(...sel).toFixed(2)]] : [];
-  const addRow = adds.length ? `<div class="ibtns">${adds.map((c, i) => `<button data-cadd="${i}">${esc(CON_JA[c[0]])}</button>`).join('')}</div>`
+  const addRow = adds.length ? `<div class="ibtns">${adds.map((c, i) => `<button data-cadd="${i}">${esc(c[0] === 'fix' ? c[2] + ' ' + CON_JA.fix : CON_JA[c[0]])}</button>`).join('')}</div>`
     : `<div class="hint">スケッチの辺を 1 本か 2 本選ぶと、拘束を足せます</div>`;
   return {html: `<div class="isec cons"><h5 data-tip="拘束" aria-label="拘束">${icon('ruler')} <span class="sub">${dof ? `自由度 ${dof}` : '完全に決まっています'}</span></h5>${rows}${addRow}</div>`, adds};
 }
