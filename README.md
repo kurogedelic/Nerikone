@@ -19,6 +19,9 @@ Web version (one document per visitor, with upload and size limits):
 docker build -t nerikone . && docker run -p 8080:8080 nerikone      # http://localhost:8080
 ```
 
+On Render's free plan: sign in with GitHub, New > Blueprint, pick this repository (`render.yaml`). It sleeps when idle.
+
+
 ## Use
 
 - `P` push/pull: click a flat face or a sketched shape, move, click (or type a distance); pulling adds, pushing cuts,

@@ -1,0 +1,13 @@
+# Render blueprint: the web version (server.py --public) from the Dockerfile, on the free plan.
+# Render > New > Blueprint > pick this repository. The free plan sleeps after 15 minutes without visitors (the first
+# request then takes about a minute) and has little memory, so keep the document limits of public mode.
+services:
+  - type: web
+    name: nerikone
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/version
+    envVars:
+      - key: PORT
+        value: "8080"
