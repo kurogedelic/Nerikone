@@ -1244,7 +1244,7 @@ class Document:
             return True
         # tiny values can fail where real ones work (a 0.001 deep cut is a zero-thickness sliver): probe upwards
         for start in (lo, lo * 10, lo * 100, hi * 0.05):
-            if start <= hi and ok(start):
+            if lo <= start <= hi and ok(start):  # never below the lower bound asked for
                 lo = start
                 break
         else:

@@ -102,14 +102,21 @@ function buildGrid() {
   const light = document.documentElement.dataset.theme === 'light';
   const fine = new T.GridHelper(size, 100, light ? 0xd5d8de : 0x2c2e33, light ? 0xd5d8de : 0x2c2e33), major = new T.GridHelper(size, 10, light ? 0xb4b9c2 : 0x55585f, light ? 0xc3c7cf : 0x45484e);
   fine.material.transparent = true; fine.material.opacity = 0.7; fine.position.y = -1e-4;
+  // the grid writes no depth, so the axis lines lying in the same plane draw over it instead of flickering with it
+  for (const g of [fine, major]) { g.material.depthWrite = false; g.renderOrder = -2; }
   grid.add(fine, major);
+  buildAxes(size / 2);
+}
+const axesLines = new T.Group(); scene.add(axesLines);
+function buildAxes(half) { // X and Y run as far as the grid does
+  axesLines.clear();
+  for (const [a, c] of [['X', 0xe5534b], ['Y', 0x6cc04a]]) {
+    const g = new T.BufferGeometry().setFromPoints([AX[a].clone().multiplyScalar(-half), AX[a].clone().multiplyScalar(half)]);
+    const l = new T.Line(g, new T.LineBasicMaterial({color: c, transparent: true, opacity: 0.75, depthWrite: false}));
+    l.renderOrder = -1; axesLines.add(l);
+  }
 }
 buildGrid();
-const axesLines = new T.Group(); scene.add(axesLines);
-for (const [a, c] of [['X', 0xe5534b], ['Y', 0x6cc04a]]) {
-  const g = new T.BufferGeometry().setFromPoints([AX[a].clone().multiplyScalar(-20), AX[a].clone().multiplyScalar(20)]);
-  axesLines.add(new T.Line(g, new T.LineBasicMaterial({color: c, transparent: true, opacity: 0.6})));
-}
 const ground = new T.Mesh(new T.PlaneGeometry(400, 400), new T.ShadowMaterial({opacity: 0.25}));
 ground.receiveShadow = true; ground.visible = false; scene.add(ground);
 const envTex = new T.PMREMGenerator(R).fromScene(new RoomEnvironment(), 0.04).texture;
@@ -549,7 +556,8 @@ function renderModalHud() {
 }
 async function endModal(ok) {
   const md = S.modal; if (!md) return;
-  S.modal = null; dragStop(); orbit.enabled = true; hud(''); md.ghosts?.forEach(g => g.parent?.remove(g)); md.ghosts = null; if (md.kind === 'grab') S.plus = false; S.cursorKey = null; // push/pull keeps its + while the tool stays active axisGuide.visible = triad.visible = moveLine.visible = false;
+  S.modal = null; dragStop(); orbit.enabled = true; hud(''); md.ghosts?.forEach(g => g.parent?.remove(g)); md.ghosts = null; if (md.kind === 'grab') S.plus = false; S.cursorKey = null; // push/pull keeps its + while the tool stays active
+  axisGuide.visible = triad.visible = moveLine.visible = false;
   canvas.style.cursor = ''; S.cursorKey = null; applyToolCursor(); if (!ok) sfx('cancel');
   if (ok && md.value != null) { await idle(); await md.finish(md, md.value); }
   else { md.cancel?.(md); await idle(); await load(); }
@@ -2139,10 +2147,12 @@ skDots.renderOrder = 14; skDots.visible = false; scene.add(skDots);
 function planeUnder(e) {
   setRay(e);
   const h = firstHit(visibleFaces()), u = h?.object.userData;
-  if (h && u.planar && u.normal && S.doc.bodies[u.body]?.kind === 'Part') return {o: h.point.clone(), n: V(u.normal).normalize(), on_body: u.body};
+  if (h && u.planar && u.normal && V(u.normal).lengthSq() > 1e-12 && S.doc.bodies[u.body]?.kind === 'Part') return {o: h.point.clone(), n: V(u.normal).normalize(), on_body: u.body};
   return S.workPlane ? {o: S.workPlane.o.clone(), n: S.workPlane.n.clone(), on_body: ''} : {o: new T.Vector3(), n: new T.Vector3(0, 0, 1), on_body: ''};
 }
 function withBasis(pl) {
+  // a plane must face somewhere: a zero or broken normal (NaN) falls back to the ground's
+  if (!(pl.n.lengthSq() > 1e-12)) pl.n = new T.Vector3(0, 0, 1); else pl.n = pl.n.clone().normalize();
   pl.u = Math.abs(pl.n.z) > 0.9 ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1).cross(pl.n).normalize();
   pl.v = pl.n.clone().cross(pl.u);
   return pl;
@@ -2311,7 +2321,7 @@ function sketchKey(e) {
 }
 async function finishSketch(open = false) {
   const k = S.sk; if (!k) return;
-  const pl = k.plane, base = {origin: arr(pl.o), normal: arr(pl.n), xdir: arr(pl.u), on_body: pl.on_body};
+  const pl = withBasis(k.plane), base = {origin: arr(pl.o), normal: arr(pl.n), xdir: arr(pl.u), on_body: pl.on_body};
   let cmd, params;
   if (S.tool === 'rect') { if (!k.rect || k.rect.width < 1e-4 || k.rect.height < 1e-4) return; cmd = 'sketch.rect'; params = {...base, ...k.rect}; }
   else if (S.tool === 'circle') { if (!k.circle || k.circle.radius < 1e-4) return; cmd = 'sketch.circle'; params = {...base, ...k.circle}; }

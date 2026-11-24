@@ -13,6 +13,13 @@ python3 -m venv .venv && .venv/bin/pip install -r nerikone/requirements.txt
 While changing the code, add `--reload`: the server restarts when the Python files change and keeps the open document
 (for the viewer files, reloading the page is enough).
 
+Tests (kernel commands, document, file I/O, API and server, the viewer's JavaScript; the browser build's kernel too
+once `tools/build-web-local.py` has fetched its packages):
+
+```bash
+.venv/bin/pip install pytest && .venv/bin/python -m pytest      # NERIKONE_FUZZ=1 adds the slow fuzz values
+```
+
 Web version (one document per visitor, with upload and size limits):
 
 ```bash
