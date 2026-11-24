@@ -116,9 +116,27 @@ def inspect_body(name: str) -> dict:
 
 
 @mcp.tool()
-def export_file(path: str, format: str = "step", bodies: list[str] | None = None) -> str:
-    """Write bodies (default: all) to a file. format: step, stl, glb, usda or nrk (the editable document)."""
-    q = urllib.parse.urlencode({"fmt": format, "bodies": ",".join(bodies or [])})
+def measure(kind: str, params: dict | None = None) -> dict:
+    """Exact measurements; nothing changes. kind and params:
+    body {bodies?}: volume, area, centre of mass and size of each.  distance {a, b}: shortest distance between two
+    bodies and its end points.  interference {bodies?}: pairs of solids that overlap, with the shared volume.
+    draft {body, direction?, min_angle?}: which faces release from a mold pulled along `direction`.
+    angle {a, at_a, b, at_b}: the angle between the faces nearest the two points."""
+    return _call("POST", "/api/measure", {"kind": kind, "params": params or {}})
+
+
+@mcp.tool()
+def set_units(units: str) -> dict:
+    """What one model unit means, for display and export: mm, cm, m or in."""
+    return _doc(_call("POST", "/api/settings", {"units": units}))
+
+
+@mcp.tool()
+def export_file(path: str, format: str = "step", bodies: list[str] | None = None, tolerance: float | None = None) -> str:
+    """Write bodies (default: all) to a file. format: step, stl, 3mf, obj, glb, usda, wrl, svg or dxf (a 2D drawing:
+    front, top and side views with hidden lines) or nrk (the editable document). `tolerance` (model units) sets
+    how finely curved faces are faceted in the mesh formats."""
+    q = urllib.parse.urlencode({"fmt": format, "bodies": ",".join(bodies or []), **({"tolerance": tolerance} if tolerance else {})})
     data = _call("GET", "/api/export?" + q)
     p = pathlib.Path(path).expanduser()
     p.write_bytes(data)

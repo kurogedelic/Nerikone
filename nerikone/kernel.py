@@ -17,6 +17,8 @@ import json
 import math
 import os
 import tempfile
+import zipfile
+import io
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -30,7 +32,7 @@ import vrml
 @dataclass
 class P:
     name: str
-    type: str  # float int bool str enum vec3 points grid sections body bodies face_ref edge_refs blob
+    type: str  # float int bool str enum vec3 points floats grid sections body bodies face_ref edge_refs blob
     default: Any = None
     doc: str = ""
     min: float | None = None
@@ -119,6 +121,10 @@ def coerce(cmd: Command, params: dict) -> dict:
                 v = [[str(s[0]), float(s[1]), float(s[2])] for s in v]
                 if len(v) < 2:
                     raise BadParams("need at least 2 sections")
+            elif p.type == "floats":
+                v = [float(x) for x in v]
+                if not all(math.isfinite(x) for x in v):
+                    raise BadParams("non-finite")
             elif p.type == "bodies":
                 v = [str(x) for x in v]
         except BadParams as e:
@@ -284,7 +290,8 @@ def _spoly(B, p):
          "Extrude a sketch region by `amount` along its plane normal. mode auto: a region drawn on a body is added to "
          "it when pulled out (amount > 0) and cut from it when pushed in; otherwise it becomes a new solid.",
          [P("body", "body", "", "the region"), P("amount", "float", 1), P("mode", "enum", "auto", options=["auto", "new", "union", "cut"]),
-          P("target", "str", "", "body to add to / cut from (default: the body it was drawn on)")])
+          P("target", "str", "", "body to add to / cut from (default: the body it was drawn on)"),
+          P("keep_face", "bool", False, "keep the region's outline as edges where it was")])
 def _rext(B, p):
     region = _body(B, p["body"], (sm.Sketch, sm.Shell))
     if abs(p["amount"]) < 1e-9:
@@ -298,8 +305,358 @@ def _rext(B, p):
         B[p["body"]] = solid
         return
     t = _body(B, target)
-    B[target] = t.fuse(solid) if mode == "union" else t.cut(solid)
+    out = t.fuse(solid) if mode == "union" else t.cut(solid)
+    if p["keep_face"]:
+        for w in region.wires() if hasattr(region, "wires") else []:
+            out = _keep_outline(out, w if mode == "union" else w.translate(*(region.faces()[0].normal_at() * p["amount"])))
+    B[target] = out
     B.pop(p["body"], None)
+
+
+# ---------------------------------------------------------------- commands: outlines with arcs, offset
+
+
+def _arc_mid(a, b, bulge):
+    """Middle point of the arc from a to b. bulge = sagitta / half chord; positive bows to the right of a -> b."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    return ((a[0] + b[0]) / 2 + dy * bulge / 2, (a[1] + b[1]) / 2 - dx * bulge / 2)
+
+
+def _outline(pts, bulges):
+    """A closed planar region from corner points; segment i (point i to i + 1) is an arc when bulges[i] != 0."""
+    if len(pts) < 2 or (len(pts) < 3 and not any(bulges)):
+        raise BadParams("need at least 3 points (or 2 with an arc)")
+    edges = []
+    for i, a in enumerate(pts):
+        b = pts[(i + 1) % len(pts)]
+        if math.dist(a, b) < 1e-9:
+            raise BadParams(f"points {i} and {(i + 1) % len(pts)} coincide")
+        k = bulges[i] if i < len(bulges) else 0.0
+        if abs(k) > 50:
+            raise BadParams("bulge must be between -50 and 50")
+        edges.append(sm.ThreePointArc(a, _arc_mid(a, b, k), b) if abs(k) > 1e-9 else sm.Line(a, b))
+    return sm.make_face(sm.Wire(edges))
+
+
+@command("sketch.path", "Outline", "Sketch",
+         "A closed region from straight and arc segments on a plane. `points` are the corners in plane coordinates; "
+         "`bulges[i]` bends the segment from point i to the next into an arc (sagitta / half chord: 0 straight, 1 a "
+         "half circle; positive bows to the right of the direction of travel).",
+         [*PLANE, P("points", "points", [[0, 0], [2, 0], [2, 1], [0, 1]], "[x, y] corners"),
+          P("bulges", "floats", [0, 1, 0, 0], "one per segment; missing ones are straight")], creates=True)
+def _spath(B, p):
+    B[p["name"]] = _region(_outline([tuple(q[:2]) for q in p["points"]], p["bulges"]).on(_plane(p)), p)
+
+
+@command("sketch.offset", "Offset outline", "Sketch",
+         "A new region whose outline is that of a sketch region, or of the flat face of a body nearest `at`, moved "
+         "outwards (positive) or inwards (negative) by `distance`. `ring` keeps only the band between the two outlines.",
+         [P("body", "body", "", "a region, or a body with a flat face"), P("at", "face_ref", [0, 0, 0], "a point on the face (bodies only)"),
+          P("distance", "float", -0.2), P("corners", "enum", "sharp", options=["sharp", "round", "chamfer"]),
+          P("ring", "bool", False, "keep the band between the old and the new outline")], creates=True)
+def _soff(B, p):
+    src = _body(B, p["body"], (sm.Part, sm.Sketch))
+    if abs(p["distance"]) < 1e-9:
+        raise BadParams("distance must not be 0")
+    if isinstance(src, sm.Sketch):
+        base, on = src, getattr(src, "nk_on_body", "")
+    else:
+        f = face_at(src, p["at"])
+        if not f.is_planar:
+            raise BadParams("offset works on flat faces")
+        base, on = sm.make_face(f.outer_wire(), *f.inner_wires()), p["body"]
+    out = base.offset(p["distance"], corners=p["corners"])
+    if p["ring"]:
+        out = out.cut(base) if p["distance"] > 0 else base.cut(out)
+    if out.area < 1e-12:
+        raise BadParams("nothing is left: the distance is too large for this outline")
+    B[p["name"]] = _region(out, {"on_body": on})
+
+
+# ---------------------------------------------------------------- commands: copies, sweep, split
+
+
+def _cut_plane(p):
+    n = sm.Vector(*p["normal"])
+    if n.length < 1e-9:
+        raise BadParams("normal must not be zero")
+    return sm.Plane(tuple(p["origin"]), z_dir=tuple(n.normalized()))
+
+
+CUTPLANE = [P("origin", "vec3", [0, 0, 0], "a point on the plane"), P("normal", "vec3", [1, 0, 0], "plane normal")]
+SOLIDS = (sm.Part, sm.Shell, sm.Mesh)
+
+
+@command("body.mirror", "Mirror", "Modify",
+         "A mirrored copy of a body in the plane through `origin` with `normal`. `merge` joins the copy to the "
+         "original instead (a symmetric part from one half).",
+         [P("body", "body", ""), *CUTPLANE, P("merge", "bool", False, "join the copy to the original")], creates=True)
+def _mir(B, p):
+    b = _body(B, p["body"], SOLIDS)
+    m = b.mirror(_cut_plane(p))
+    if p["merge"]:
+        if not isinstance(b, sm.Part):
+            raise BadParams("merge needs a solid body")
+        B[p["body"]] = b.fuse(m)
+    else:
+        B[p["name"]] = m
+
+
+@command("body.pattern", "Pattern", "Modify",
+         "Copies of a body. linear: `count` bodies in a row, each `step` from the last. circular: `count` bodies "
+         "around the axis through `axis_origin` along `axis_dir`, spread over `angle` degrees (360: evenly all "
+         "around). `merge` joins the copies to the original.",
+         [P("body", "body", ""), P("kind", "enum", "linear", options=["linear", "circular"]),
+          P("count", "int", 3, "bodies in all, the original included", 2, 200), P("step", "vec3", [3, 0, 0], "linear: spacing"),
+          P("axis_origin", "vec3", [0, 0, 0], "circular: a point on the axis"), P("axis_dir", "vec3", [0, 0, 1], "circular: axis direction"),
+          P("angle", "float", 360, "circular: total angle", -360, 360), P("merge", "bool", False, "join the copies to the original")],
+         creates=True)
+def _pat(B, p):
+    b = _body(B, p["body"], SOLIDS)
+    n = p["count"]
+    if p["kind"] == "linear":
+        if not any(p["step"]):
+            raise BadParams("step must not be zero")
+        copies = [b.translate(*(x * i for x in p["step"])) for i in range(1, n)]
+    else:
+        d = sm.Vector(*p["axis_dir"])
+        if d.length < 1e-9 or abs(p["angle"]) < 1e-9:
+            raise BadParams("axis_dir and angle must not be zero")
+        axis = sm.Axis(tuple(p["axis_origin"]), tuple(d.normalized()))
+        full = abs(abs(p["angle"]) - 360) < 1e-9
+        da = p["angle"] / (n if full else n - 1)
+        copies = [b.rotate(axis, da * i) for i in range(1, n)]
+    if p["merge"]:
+        if not isinstance(b, sm.Part):
+            raise BadParams("merge needs a solid body")
+        for c in copies:
+            b = b.fuse(c)
+        B[p["body"]] = b
+    else:
+        for i, c in enumerate(copies, 2):
+            B[f"{p['name']}_{i}"] = c
+
+
+@command("nurbs.sweep", "Sweep", "NURBS",
+         "Sweep a profile along a path through 3D `points` (a smooth curve, or straight runs with `smooth` off). "
+         "The profile is centred on the start of the path, square to it.",
+         [P("points", "points", [[0, 0, 0], [0, 0, 2], [1, 0, 3], [3, 0, 3]], "[x, y, z] path"),
+          P("profile", "enum", "circle", options=["circle", "square", "hexagon"]), P("size", "float", 0.3, "radius / half width", 1e-6),
+          P("smooth", "bool", True, "a curve through the points"), P("twist", "float", 0, "degrees of twist along the path")], creates=True)
+def _swp(B, p):
+    pts = [tuple(_vec(q)) for q in p["points"]]
+    if len(pts) < 2:
+        raise BadParams("need at least 2 points")
+    if any(math.dist(a, b) < 1e-9 for a, b in zip(pts, pts[1:])):
+        raise BadParams("two path points coincide")
+    path = sm.Spline(*pts) if p["smooth"] and len(pts) > 2 else sm.Polyline(*pts) if len(pts) > 2 else sm.Line(*pts)
+    r = p["size"]
+    prof = sm.Circle(r) if p["profile"] == "circle" else sm.Rectangle(2 * r, 2 * r) if p["profile"] == "square" else sm.RegularPolygon(r, 6)
+    out = sm.sweep(prof, path, twist=p["twist"])
+    if not isinstance(out, sm.Part) or not out.is_valid():
+        raise BadParams("the sweep does not make a closed solid (the profile is too large for the path's bends)")
+    B[p["name"]] = out
+
+
+@command("body.split", "Split", "Modify",
+         "Cut a body with the plane through `origin` with `normal`. keep: the side the normal points to (above), "
+         "the other (below), or both (the second piece becomes a new body).",
+         [P("body", "body", ""), *CUTPLANE, P("keep", "enum", "both", options=["above", "below", "both"])], creates=True)
+def _split(B, p):
+    b = _body(B, p["body"])
+    out = b.split(_cut_plane(p), p["keep"])
+    parts = [x for x in (out if isinstance(out, (list, tuple)) else [out]) if x is not None and x.volume > 1e-12]
+    if not parts or (p["keep"] == "both" and len(parts) < 2):
+        raise BadParams("the plane does not cut this body")
+    B[p["body"]] = parts[0]
+    for i, x in enumerate(parts[1:]):
+        B[p["name"] if i == 0 else f"{p['name']}_{i + 1}"] = x
+
+
+@command("body.offset", "Grow / shrink", "Modify",
+         "Move every face of a body outwards (positive) or inwards (negative) by `distance`.",
+         [P("body", "body", ""), P("distance", "float", 0.1), P("corners", "enum", "sharp", options=["sharp", "round"])])
+def _boff(B, p):
+    out = _body(B, p["body"]).offset(p["distance"], corners=p["corners"])
+    if not out.is_valid() or out.volume < 1e-12:
+        raise BadParams("nothing valid is left at this distance")
+    B[p["body"]] = out
+
+
+@command("face.draft", "Draft", "Modify",
+         "Tilt the faces nearest the given points by `angle` degrees, hinged on the plane through `origin` with "
+         "`normal` (the pull direction of a mold).",
+         [P("body", "body", ""), P("faces", "edge_refs", None, "points on the faces"), P("angle", "float", 3, "", -89, 89),
+          P("origin", "vec3", [0, 0, 0], "a point on the neutral plane"), P("normal", "vec3", [0, 0, 1], "pull direction")])
+def _draft(B, p):
+    b = _body(B, p["body"])
+    if not p["faces"]:
+        raise BadParams("give at least one face")
+    out = b.draft([face_at(b, q) for q in p["faces"]], p["angle"], _cut_plane(p))
+    if not out.is_valid():
+        raise BadParams("the draft does not give a closed solid")
+    B[p["body"]] = out
+
+
+@command("body.section", "Cross-section", "Sketch",
+         "The cross-section of a body in the plane through `origin` with `normal`, as a new region.",
+         [P("body", "body", ""), *CUTPLANE], creates=True)
+def _sect(B, p):
+    sk = _body(B, p["body"]).section(_cut_plane(p))
+    if sk.area < 1e-12:
+        raise BadParams("the plane does not cut this body")
+    B[p["name"]] = sk
+
+
+# ---------------------------------------------------------------- commands: lines on faces, moving an edge
+
+
+@command("face.split", "Split face", "Modify",
+         "Draw a line across a face, from its border to its border, and split the face in two along it (the shape "
+         "stays the same). `points` are the line's corners in 3D; each half can then be pushed or pulled on its own.",
+         [P("body", "body", ""), P("points", "points", [[-1, 0, 1], [1, 0, 1]], "[x, y, z] along the line")])
+def _fsplit(B, p):
+    b = _body(B, p["body"])
+    pts = [tuple(_vec(q)) for q in p["points"]]
+    if len(pts) < 2:
+        raise BadParams("need at least 2 points")
+    if any(math.dist(a, c) < 1e-9 for a, c in zip(pts, pts[1:])):
+        raise BadParams("two points of the line coincide")
+    tool = sm.Line(*pts) if len(pts) == 2 else sm.Polyline(*pts)
+    try:
+        out = b.imprint(tool)
+    except sm.ModelingError:
+        raise BadParams("the line does not cross a face from one side to the other") from None
+    if len(out.faces()) <= len(b.faces()):
+        raise BadParams("the line does not cross a face from one side to the other")
+    B[p["body"]] = out
+
+
+def _face_loop(face):
+    """The corners of a flat face with straight sides, in order around it."""
+    if not face.is_planar:
+        raise BadParams("the faces on both sides of the edge must be flat")
+    if face.inner_wires():
+        raise BadParams("a face beside the edge has a hole; this is not supported yet")
+    pts = []
+    for e in face.outer_wire().edges():
+        if e.geom_type != "line":
+            raise BadParams("the faces beside the edge must have straight sides")
+        pts.append(tuple(e.start))
+    return pts
+
+
+def _flat(pts, tol=1e-7):
+    if len(pts) <= 3:
+        return True
+    a, b, c = (sm.Vector(*q) for q in pts[:3])
+    n = (b - a).cross(c - a)
+    if n.length < 1e-12:
+        return False
+    n = n.normalized()
+    return all(abs(n.dot(sm.Vector(*q) - a)) < tol * max(1.0, (b - a).length) for q in pts[3:])
+
+
+def _wedge(loop, P, Q, by, curved):
+    """The solid between a face (its corners `loop`, one side of it the edge P-Q) and the same face with that edge
+    moved by `by`: what moving the edge adds to the body (or takes away from it)."""
+    n = len(loop)
+    i = next(k for k in range(n) if math.dist(loop[k], P) < 1e-7)
+    a = loop[i:] + loop[:i]  # starts at P
+    if math.dist(a[1], Q) < 1e-7:  # walk away from Q, so the path is P -> ... -> Q around the rest of the face
+        a = [a[0]] + a[1:][::-1]
+    if math.dist(a[-1], Q) > 1e-7:
+        raise BadParams("the edge is not a side of the faces next to it")
+    up = lambda q: (q[0] + by[0], q[1] + by[1], q[2] + by[2])
+    Pu, Qu = up(P), up(Q)
+    poly = lambda *q: sm.make_face(sm.Polyline(*q, close=True))
+    faces = [poly(*a), poly(P, Q, Qu, Pu), poly(P, Pu, a[1]), poly(Q, a[-2], Qu)]
+    mid = a[1:-1]  # the corners away from the edge
+    if len(mid) == 1:
+        faces.append(poly(Pu, Qu, mid[0]))
+    elif len(mid) == 2 and _flat([Pu, Qu, mid[1], mid[0]]):
+        faces.append(poly(Pu, Qu, mid[1], mid[0]))
+    elif len(mid) == 2 and curved:  # a twisted side: one smooth ruled face between the moved edge and the far side
+        faces.append(sm.ruled(sm.Line(Pu, Qu), sm.Line(mid[0], mid[1])))
+    else:  # flat triangles: from the moved P over the first half, from the moved Q over the rest
+        h = len(mid) // 2
+        for k in range(len(mid) - 1):
+            faces.append(poly(Pu if k < h else Qu, mid[k], mid[k + 1]))
+        faces.append(poly(Pu, Qu, mid[h]))
+    w = sm.stitch(faces)
+    if not isinstance(w, sm.Part):
+        raise BadParams("the moved edge does not close up with the faces around it")
+    return w
+
+
+@command("edge.move", "Move edge", "Modify",
+         "Move a straight edge between two flat faces by `by`; the two faces tilt to follow it (a line drawn across "
+         "the top of a box and raised becomes the ridge of a roof). Where a tilted face cannot stay flat it becomes "
+         "one smooth twisted face (`surface: curved`) or two flat triangles (`surface: flat`).",
+         [P("body", "body", ""), P("at", "face_ref", None, "a point on the edge"), P("by", "vec3", [0, 0, 1]),
+          P("surface", "enum", "curved", options=["curved", "flat"])])
+def _emove(B, p):
+    b = _body(B, p["body"])
+    by = tuple(p["by"])
+    if math.hypot(*by) < 1e-9:
+        raise BadParams("by must not be zero")
+    e = edges_at(b, [p["at"]])[0]
+    if e.geom_type != "line":
+        raise BadParams("only straight edges can be moved")
+    fs = list(e.faces())
+    if len(fs) != 2:
+        raise BadParams("the edge must lie between two faces")
+    P, Q = tuple(e.start), tuple(e.end)
+    out, moved = b, False
+    for f in fs:
+        nrm = f.normal_at(f.center())
+        along = nrm.x * by[0] + nrm.y * by[1] + nrm.z * by[2]
+        if abs(along) < 1e-9 * max(1.0, math.hypot(*by)):
+            continue  # moving within this face's plane: it does not tilt
+        w = _wedge(_face_loop(f), P, Q, by, p["surface"] == "curved")
+        # what is added must lie outside the body, what is taken away inside it; otherwise the edge went through it
+        inside = b.intersect(w).volume if w.volume > 1e-12 else 0.0
+        if (along > 0 and inside > 1e-6 * w.volume) or (along < 0 and inside < w.volume * (1 - 1e-6)):
+            raise BadParams("the edge would pass through the body; move it less far")
+        out = out.fuse(w) if along > 0 else out.cut(w)
+        moved = True
+    if not moved:
+        raise BadParams("moving the edge along both of its faces changes nothing; move it out of them (for example along Z)")
+    if not out.is_valid(strict=True):
+        raise BadParams("the result would not be a closed solid (the edge moves too far)")
+    B[p["body"]] = out
+
+
+# ---------------------------------------------------------------- annotations: dimensions
+
+
+@dataclass
+class Dimension:
+    """A dimension line: what is measured (a to b, the true distance or along one axis) and where its line is drawn
+    (offset from the measured points). It is kept in the document like a body, but has no geometry of its own."""
+    a: tuple
+    b: tuple
+    offset: tuple
+    axis: str  # "aligned" or "X" / "Y" / "Z"
+
+    @property
+    def value(self):
+        if self.axis in ("X", "Y", "Z"):
+            i = "XYZ".index(self.axis)
+            return abs(self.b[i] - self.a[i])
+        return math.dist(self.a, self.b)
+
+
+@command("dim.add", "Dimension", "Annotate",
+         "A dimension between the points `a` and `b`: their distance (axis aligned) or how far apart they are along X, Y "
+         "or Z. `offset` moves the dimension line away from the points (the extension lines run back to them).",
+         [P("a", "vec3", [0, 0, 0]), P("b", "vec3", [1, 0, 0]), P("offset", "vec3", [0, -0.5, 0]),
+          P("axis", "enum", "aligned", options=["aligned", "X", "Y", "Z"])], creates=True)
+def _dim(B, p):
+    d = Dimension(tuple(p["a"]), tuple(p["b"]), tuple(p["offset"]), p["axis"])
+    if d.value < 1e-9:
+        raise BadParams("the two points are at the same place" + ("" if p["axis"] == "aligned" else f" along {p['axis']}"))
+    B[p["name"]] = d
 
 
 # ---------------------------------------------------------------- commands: NURBS
@@ -383,6 +740,49 @@ def tangent_chain(part, face):
                     seen.add(k)
                     todo.append(faces[k])
     return [faces[k] for k in seen]
+
+
+@command("face.extrude", "Push/pull (extrude face)", "Modify",
+         "Extrude the planar face nearest `at` along its outward normal by `amount`: pulling (amount > 0) adds that "
+         "prism to the body, pushing (amount < 0) cuts it away. The body stays one closed solid.",
+         [P("body", "body", ""), P("at", "face_ref", None, "a point on the face"), P("amount", "float", 1),
+          P("keep_face", "bool", False, "keep the starting face's outline as edges (a new segment on top of the old)")])
+def _fext(B, p):
+    b = _body(B, p["body"])
+    f = face_at(b, p["at"])
+    if not f.is_planar:
+        raise BadParams("push/pull works on flat faces; use face.move for curved ones")
+    if abs(p["amount"]) < 1e-9:
+        raise BadParams("amount must not be 0")
+    prism = sm.extrude(f, p["amount"])
+    out = b.fuse(prism) if p["amount"] > 0 else b.cut(prism)
+    if not out.is_valid():
+        raise BadParams("the result would not be a closed solid (the cut goes all the way through)")
+    if p["keep_face"]:
+        out = _keep_outline(out, f if p["amount"] > 0 else f.translate(*(f.normal_at() * p["amount"])), b)
+    B[p["body"]] = out
+
+
+def _keep_outline(body, tool, old=None):
+    """Split the faces the outline lies on along it (where the old face was, or where a pushed face went), so that the
+    step stays visible as edges. `tool` is the old face (it lies inside the result and cuts the faces it meets exactly along
+    its outline, also where the outline runs over steps) or a wire (which must lie wholly on faces). Edges that are already
+    there need nothing."""
+    out = body
+    for t in ([tool] if not hasattr(tool, "outer_wire") else [tool, tool.outer_wire()]):
+        try:
+            out = body.imprint(t)
+            break
+        except (sm.ModelingError, ValueError, AttributeError):
+            continue
+    if old is not None:  # edges of the old shape that the merge swallowed (a pulled face flush with its neighbours) come back
+        try:
+            restored = out.imprint(old)
+            if restored.is_valid():
+                out = restored
+        except (sm.ModelingError, ValueError, AttributeError):
+            pass  # "crosses no face": nothing was swallowed
+    return out
 
 
 @command("edge.fillet", "Fillet", "Modify", "Round the edges nearest the given points.",
@@ -484,7 +884,7 @@ def _fdel(B, p):
 
 @command("body.delete", "Delete body", "Modify", "Remove a body.", [P("body", "body", "")])
 def _del(B, p):
-    _body(B, p["body"], (sm.Part, sm.Shell, sm.Mesh))
+    _body(B, p["body"], (sm.Part, sm.Shell, sm.Mesh, sm.Sketch, Dimension))
     del B[p["body"]]
 
 
@@ -520,6 +920,9 @@ def _imp(B, p):
 
 # ---------------------------------------------------------------- document
 
+UNITS = {"mm": "millimeter", "cm": "centimeter", "m": "meter", "in": "inch"}  # unit -> its 3MF name
+
+
 class Document:
     def __init__(self):
         self.features: list[dict] = []
@@ -528,10 +931,16 @@ class Document:
         self.next_id = 1
         self.undo_stack: list[str] = []
         self.redo_stack: list[str] = []
+        self.units = "mm"  # what one model unit means, for display and export
+
+    def set_units(self, units):
+        if units not in UNITS:
+            raise BadParams(f"units must be one of {list(UNITS)}")
+        self.units = units
 
     # -- persistence
     def to_json(self, with_blobs=True):
-        d = {"format": "nerikone/1", "features": self.features}
+        d = {"format": "nerikone/1", "units": self.units, "features": self.features}
         if with_blobs:
             used = {f["params"].get("blob") for f in self.features if f["cmd"] == "file.import"}
             d["blobs"] = {h: base64.b64encode(BLOBS[h]).decode() for h in used if h in BLOBS}
@@ -540,7 +949,10 @@ class Document:
     def load_json(self, d):
         for h, b in d.get("blobs", {}).items():
             BLOBS[h] = base64.b64decode(b)
+        if not isinstance(d, dict) or not isinstance(d.get("features"), list):
+            raise BadParams("not a Nerikone document")
         self._push_undo()
+        self.units = d.get("units") if d.get("units") in UNITS else "mm"
         self.features = d["features"]
         self.next_id = max([f["id"] for f in self.features] + [0]) + 1
         self.rebuild(0)
@@ -570,7 +982,12 @@ class Document:
     def _apply(self, bodies, f):
         out = dict(bodies)
         if not f.get("suppressed"):
-            COMMANDS[f["cmd"]].run(out, f["params"])
+            cmd = COMMANDS[f["cmd"]]
+            params = f["params"]
+            # steps saved before a parameter existed run with its default (documents stay readable as commands grow)
+            if any(q.name not in params for q in cmd.params):
+                params = {**{q.name: copy.deepcopy(q.default) for q in cmd.params if q.name not in params}, **params}
+            cmd.run(out, params)
         return out
 
     def rebuild(self, start=0):
@@ -706,7 +1123,7 @@ class Document:
         return {"features": [{**f, "label": COMMANDS[f["cmd"]].label, "error": self.errors.get(f["id"])}
                              for f in self.features],
                 "bodies": {n: {**body_info(b), **self._appearance(n)} for n, b in self.bodies.items()},
-                "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
+                "units": self.units, "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
 
 
 def _unknown(cid):
@@ -730,6 +1147,11 @@ def hex_color(c):
 
 
 def body_info(b):
+    if isinstance(b, Dimension):
+        lo = [min(b.a[i], b.b[i], b.a[i] + b.offset[i]) for i in range(3)]
+        hi = [max(b.a[i], b.b[i], b.a[i] + b.offset[i]) for i in range(3)]
+        return {"kind": "Dimension", "bbox": [lo, hi], "color": None,
+                "dim": {"a": list(b.a), "b": list(b.b), "offset": list(b.offset), "axis": b.axis, "value": round(b.value, 9)}}
     bb = b.bbox()
     d = {"kind": type(b).__name__, "bbox": [list(bb.min), list(bb.max)], "color": hex_color(getattr(b, "color", None))}
     if isinstance(b, (sm.Part, sm.Shell)):
@@ -756,6 +1178,88 @@ def inspect_body(b):
         d["edge_list"] = [{"type": e.geom_type, "point": _v(e.point_at(0.5)), "length": round(e.length, 6),
                            "convex": bool(e.is_convex) if hasattr(e, "is_convex") else None} for e in b.edges()]
     return d
+
+
+# ---------------------------------------------------------------- measuring (read-only queries)
+
+
+def measure(doc: "Document", kind: str, p: dict) -> dict:
+    """Exact measurements from the kernel. kind:
+    body          {bodies}                  volume, area, centre of mass and size of each
+    distance      {a, b}                    the shortest distance between two bodies and the points it is between
+    interference  {bodies?}                 pairs of solids that overlap, with the shared volume (all solids if omitted)
+    draft         {body, direction?, min_angle?}  how each face releases from a mold pulled along `direction`
+    angle         {a, at_a, b, at_b}        the angle between the faces nearest the two points
+    """
+    B = doc.bodies
+    if not isinstance(p, dict):
+        raise BadParams("params must be an object")
+
+    def names(key="bodies", kinds=SOLIDS + (sm.Sketch,)):
+        ns = p.get(key) or [n for n, b in B.items() if isinstance(b, kinds)]
+        if not isinstance(ns, list):
+            raise BadParams(f"{key} must be a list of body names")
+        return [str(n) for n in ns]
+
+    if kind == "body":
+        out = {}
+        for n in names():
+            b = _body(B, n, SOLIDS + (sm.Sketch,))
+            bb = b.bbox()
+            d = {"kind": type(b).__name__, "size": [round(bb.max[i] - bb.min[i], 6) for i in range(3)]}
+            if isinstance(b, sm.Part):
+                mp = b.mass_properties()
+                d.update(volume=round(mp.volume, 6), area=round(mp.area, 6), center=_v(mp.center))
+            elif isinstance(b, (sm.Sketch, sm.Shell)):
+                d.update(area=round(b.area, 6))
+            out[n] = d
+        return {"bodies": out}
+    if kind == "distance":
+        a, b = _body(B, str(p.get("a", "")), (sm.Part, sm.Shell)), _body(B, str(p.get("b", "")), (sm.Part, sm.Shell))
+        cp = a.closest_points(b)
+        return {"distance": round(cp.distance, 6), "point_a": _v(cp.point), "point_b": _v(cp.other_point)}
+    if kind == "interference":
+        ns = [n for n in names(kinds=(sm.Part,)) if isinstance(_body(B, n, SOLIDS + (sm.Sketch,)), sm.Part)]
+        if len(ns) > 40:
+            raise BadParams("too many bodies to compare at once (40 at most)")
+        pairs = []
+        for i, x in enumerate(ns):
+            bx = B[x].bbox()
+            for y in ns[i + 1:]:
+                by = B[y].bbox()
+                if any(bx.min[k] > by.max[k] or by.min[k] > bx.max[k] for k in range(3)):
+                    continue  # their boxes do not even touch
+                try:
+                    v = B[x].intersect(B[y]).volume
+                except Exception:
+                    continue
+                if v > 1e-9:
+                    pairs.append({"a": x, "b": y, "volume": round(v, 6)})
+        return {"checked": ns, "pairs": pairs}
+    if kind == "draft":
+        b = _body(B, str(p.get("body", "")))
+        try:
+            d = _vec(p.get("direction", [0, 0, 1]))
+            min_angle = float(p.get("min_angle", 1.0))
+        except (TypeError, ValueError) as e:
+            raise BadParams(f"draft: {e}") from None
+        if not any(d) or not (0 <= min_angle < 90):
+            raise BadParams("direction must not be zero; min_angle must be within 0..90")
+        da = b.draft_analysis(tuple(d), min_angle=min_angle)
+        groups = {}
+        for g in ("positive", "insufficient", "vertical", "undercut"):
+            groups[g] = [_v(_face_point(f)) for f in getattr(da, g)]
+        return {"direction": list(d), "min_angle": min_angle, "ok": bool(da.ok), "counts": {g: len(v) for g, v in groups.items()}, "faces": groups}
+    if kind == "angle":
+        try:
+            fa = face_at(_body(B, str(p.get("a", "")), (sm.Part, sm.Shell)), _vec(p.get("at_a")))
+            fb = face_at(_body(B, str(p.get("b", "")), (sm.Part, sm.Shell)), _vec(p.get("at_b")))
+        except (TypeError, ValueError) as e:
+            raise BadParams(f"angle: {e}") from None
+        na, nb = fa.normal_at(), fb.normal_at()
+        c = max(-1.0, min(1.0, na.dot(nb) / (na.length * nb.length)))
+        return {"angle": round(math.degrees(math.acos(c)), 6), "normal_a": _v(na), "normal_b": _v(nb)}
+    raise BadParams("kind must be one of: body, distance, interference, draft, angle")
 
 
 # ---------------------------------------------------------------- tessellation for the viewer
@@ -792,30 +1296,76 @@ def mesh_body(b):
 
 
 def scene(bodies):
-    return {n: {**mesh_body(b), "kind": type(b).__name__} for n, b in bodies.items()}
+    return {n: {**mesh_body(b), "kind": type(b).__name__} for n, b in bodies.items() if not isinstance(b, Dimension)}
 
 
 # ---------------------------------------------------------------- export
 
-EXPORTS = {"wrl": "model/vrml", "step": "model/step", "stl": "model/stl", "glb": "model/gltf-binary", "usda": "model/vnd.usda", "nrk": "application/json"}
+EXPORTS = {"wrl": "model/vrml", "step": "model/step", "stl": "model/stl", "glb": "model/gltf-binary", "usda": "model/vnd.usda",
+           "nrk": "application/json", "3mf": "model/3mf", "obj": "model/obj", "svg": "image/svg+xml", "dxf": "image/vnd.dxf"}
 
 
-def export(doc: Document, fmt: str, names: list[str] | None = None) -> bytes:
+def write_3mf(meshes, unit="millimeter") -> bytes:
+    """A 3MF package (core specification): one object per body, as (name, vertices, triangles)."""
+    from xml.sax.saxutils import quoteattr
+    objs, items = [], []
+    for i, (name, verts, tris) in enumerate(meshes, 1):
+        vs = "".join(f'<vertex x="{x:.6g}" y="{y:.6g}" z="{z:.6g}"/>' for x, y, z in verts.tolist())
+        ts = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in tris.tolist())
+        objs.append(f'<object id="{i}" type="model" name={quoteattr(name)}><mesh><vertices>{vs}</vertices><triangles>{ts}</triangles></mesh></object>')
+        items.append(f'<item objectid="{i}"/>')
+    model = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+             f'<model unit="{unit}" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
+             f'<resources>{"".join(objs)}</resources><build>{"".join(items)}</build></model>')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                   '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>')
+        z.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   '<Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
+        z.writestr("3D/3dmodel.model", model)
+    return buf.getvalue()
+
+
+def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: float | None = None) -> bytes:
+    """`tolerance` (model units) sets how finely curved faces are faceted in the mesh formats (stl, 3mf, obj, wrl)."""
     if fmt == "nrk":
         return json.dumps(doc.to_json()).encode()
-    shapes = [b for n, b in doc.bodies.items() if not names or n in names]
+    if tolerance is not None and not (1e-6 <= tolerance <= 1e3):
+        raise BadParams("tolerance must be between 0.000001 and 1000")
+    shapes = [b for n, b in doc.bodies.items() if (not names or n in names) and not isinstance(b, (sm.Sketch, Dimension))]
     if not shapes:
         raise BadParams("nothing to export")
+    step_unit = {"in": "inch"}.get(doc.units, doc.units)
     if fmt == "step":
-        return sm.to_step([s for s in shapes if not isinstance(s, sm.Mesh)]).encode()
+        return sm.to_step([s for s in shapes if not isinstance(s, sm.Mesh)], unit=step_unit).encode()
     if fmt == "stl":
-        return sm.to_stl(shapes)
+        return sm.to_stl(shapes, tolerance=tolerance)
+    if fmt == "obj":
+        return sm.to_obj(shapes).encode()
+    if fmt == "3mf":
+        meshes = []
+        for n, b in doc.bodies.items():
+            if (names and n not in names) or isinstance(b, (sm.Sketch, Dimension)):
+                continue
+            m = b if isinstance(b, sm.Mesh) else b.mesh(tolerance)
+            meshes.append((n, m.vertices, m.triangles))
+        return write_3mf(meshes, UNITS[doc.units])
+    if fmt in ("svg", "dxf"):  # a 2D drawing: front, top and side views with hidden lines
+        parts = [s for s in shapes if isinstance(s, (sm.Part, sm.Shell))]
+        if not parts:
+            raise BadParams("a drawing needs at least one solid or surface body")
+        views = sm.drawing_views(parts)
+        return (sm.to_svg(views) if fmt == "svg" else sm.to_dxf(views, unit=step_unit)).encode()
     if fmt == "wrl":
         meshes = []
         for n, b in doc.bodies.items():
             if names and n not in names:
                 continue
-            m = b if isinstance(b, sm.Mesh) else b.mesh()
+            if isinstance(b, (sm.Sketch, Dimension)):
+                continue
+            m = b if isinstance(b, sm.Mesh) else b.mesh(tolerance)
             meshes.append((n, m.vertices, m.triangles))
         return vrml.write(meshes)
     if fmt == "glb":

@@ -17,7 +17,7 @@ This repository is public.
 ## Using Nerikone as an agent (MCP)
 1. Start the app: `.venv/bin/python nerikone/server.py` (http://localhost:8765). The viewer follows your edits live.
 2. The MCP server (`nerikone/mcp_server.py`, registered in `.mcp.json`) exposes: `list_commands`, `run_command`,
-   `inspect_body`, `update_feature`, `delete_feature`, `get_document`, `undo`, `redo`, `new_document`,
+   `inspect_body`, `measure`, `update_feature`, `delete_feature`, `get_document`, `undo`, `redo`, `new_document`, `set_units`,
    `export_file`, `import_file`.
 3. Reference faces and edges by **a point on them** (take it from `inspect_body`), never by index.
 4. Z is up. A failed command changes nothing and returns the kernel's reason: adjust parameters and retry.

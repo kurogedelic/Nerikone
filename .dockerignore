@@ -1,0 +1,4 @@
+# send only the app to the image build
+*
+!nerikone/
+nerikone/**/__pycache__

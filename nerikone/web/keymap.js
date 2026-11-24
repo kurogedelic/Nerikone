@@ -7,7 +7,7 @@
 
 export const DEFAULT_KEYMAP = {
   'mode.edge': ['2'], 'mode.face': ['3'], 'mode.body': ['4'],
-  'add.menu': ['A', 'Shift+A'], 'tool.ruler': ['M'], 'sketch.rect': ['Alt+R'], 'sketch.circle': ['Alt+C'], 'sketch.poly': ['Alt+P'], 'select.all': ['Mod+A'], 'select.none': ['Alt+A', 'Escape'],
+  'add.menu': ['A', 'Shift+A'], 'tool.ruler': ['M'], 'tool.dim': ['D'], 'tool.pushpull': ['P'], 'tool.orbit': ['O'], 'sketch.line': ['L'], 'sketch.rect': ['Alt+R'], 'sketch.circle': ['Alt+C'], 'sketch.poly': ['Alt+P'], 'select.all': ['Mod+A'], 'select.none': ['Alt+A', 'Escape'],
   'transform.grab': ['G'], 'transform.rotate': ['R'], 'transform.scale': ['S'],
   'edit.extrude': ['E'], 'edit.fillet': ['Mod+B', 'F'], 'edit.chamfer': ['Shift+Mod+B'], 'edit.shell': ['Shift+S'],
   'edit.duplicate': ['Shift+D'], 'edit.delete': ['X', 'Delete', 'Backspace'],
@@ -17,11 +17,12 @@ export const DEFAULT_KEYMAP = {
   'view.iso': ['Numpad0', 'Alt+0'], 'view.ortho': ['Numpad5', 'Alt+5'], 'view.frame': ['Home', 'Period', 'NumpadDecimal'],
   'view.shading': ['Z'], 'view.render': ['Shift+Z'],
   'hide.selected': ['H'], 'hide.unhide': ['Alt+H'],
-  'panel.toolbar': ['T'], 'panel.side': ['N'], 'panel.lastop': ['F9'], 'panel.console': ['Backquote'],
+  'panel.toolbar': ['T'], 'panel.side': ['Shift+N'], 'panel.inspector': ['N', 'F9'], 'panel.console': ['Backquote'],
   'history.undo': ['Mod+Z'], 'history.redo': ['Shift+Mod+Z', 'Mod+Y'], 'command.repeat': ['Shift+R'],
   'command.palette': ['F3', 'Space', 'Slash'],
   'file.new': ['Mod+N'], 'file.open': ['Mod+O'], 'file.save': ['Mod+S'], 'file.import': ['Mod+I'], 'file.export': ['Shift+Mod+E'],
   'help.keymap': ['F1', 'Shift+Slash'],
+  'view.section': ['Alt+X'], 'snap.toggle': ['Shift+Tab'], 'measure.info': ['I'], 'sketch.offset': ['Alt+O'], 'edit.mirror': ['Alt+M'], 'file.saveas': ['Shift+Mod+S'],
 };
 
 const STORE = 'nerikone.keymap.v1';

@@ -6,9 +6,16 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 It uses, as a dependency (not included in this repository):
 
   smlibpy - Copyright (c) 2026 AWV Informatik AG - MIT License
+    https://github.com/awv-informatik/smlibpy
     which includes the SMLib solid modeling kernel from USD BRep:
     USD BRep - Copyright (c) 2020-2026, NVIDIA CORPORATION & AFFILIATES - Apache License 2.0
     https://github.com/NVIDIA-Omniverse/usd-brep
+    and fonts under the SIL Open Font License 1.1. Their licence texts ship inside the smlibpy package
+    (smlibpy-*.dist-info/licenses) and apply to it, not to this repository.
+
+Included in this repository (nerikone/web/vendor/fukiai, with its licence):
+
+  Fukiai icon font - Copyright (c) 2024 Leo Kuroshita - MIT License - https://github.com/hugelton/Fukiai
 
 The web viewer loads, from a CDN (not included in this repository):
 
@@ -16,6 +23,8 @@ The web viewer loads, from a CDN (not included in this repository):
   Tabler Icons - Copyright (c) 2020-2024 Paweł Kuna - MIT License
 
 The Python MCP server depends on the MCP Python SDK - Copyright (c) 2024 Anthropic, PBC - MIT License.
+The other Python dependencies (numpy, starlette, uvicorn, pydantic and others, pulled in by pip) are under their own
+MIT, BSD or Apache-2.0 licences; none of them is copyleft.
 
 Product and company names are the trademarks of their respective owners. Nerikone is an independent
 project and is not affiliated with or endorsed by any of them.
