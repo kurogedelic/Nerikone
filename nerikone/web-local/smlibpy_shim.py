@@ -9,6 +9,11 @@ def _raise(e):
     m = str(e)
     if 'ModelingError' in m or 'KernelError' in m:
         raise ModelingError(m.split(':', 1)[-1].strip()) from None
+    # JavaScript's built-in errors are Python's built-ins in smlibpy: the kernel code catches ValueError / TypeError
+    last = [ln for ln in m.strip().splitlines() if ln.strip()][-1]
+    for js, py in (('RangeError', ValueError), ('TypeError', TypeError)):
+        if js + ':' in last:
+            raise py(last.split(js + ':', 1)[1].strip()) from None
     raise e
 
 def _camel(n):

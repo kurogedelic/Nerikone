@@ -539,11 +539,17 @@ def _fsplit(B, p):
         raise BadParams("need at least 2 points")
     if any(math.dist(a, c) < 1e-9 for a, c in zip(pts, pts[1:])):
         raise BadParams("two points of the line coincide")
+    try:  # snapping and the pointer leave the points a hair off the surface: put them exactly on it
+        pts = [tuple(b.closest_point(q)) for q in pts]
+    except Exception:  # keep the points as given
+        pass
     tool = sm.Line(*pts) if len(pts) == 2 else sm.Polyline(*pts)
     try:
         out = b.imprint(tool)
     except sm.ModelingError:
         raise BadParams("the line does not cross a face from one side to the other") from None
+    except ValueError:
+        raise BadParams("the line does not lie on one face (it leaves the surface); draw it from one edge of a face to another") from None
     if len(out.faces()) <= len(b.faces()):
         raise BadParams("the line does not cross a face from one side to the other")
     B[p["body"]] = out
