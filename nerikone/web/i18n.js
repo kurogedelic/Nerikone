@@ -284,6 +284,8 @@ const EN = {
   '解析': 'Analyze',
   '穴をふさぐ': 'Fill hole',
   '履歴バー（横）': 'History strip',
+  'ライトテーマ': 'Light theme',
+  'テーマ（ダーク / ライト）': 'Theme (dark / light)',
   'ビルド': 'Build',
   'ホバー': 'Hover',
   '軽量表示（ぼかしなし）': 'Light mode (no blur)',

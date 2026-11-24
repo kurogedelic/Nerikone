@@ -99,7 +99,8 @@ const grid = new T.Group(); grid.rotation.x = Math.PI / 2; scene.add(grid);
 function buildGrid() {
   grid.clear();
   const st = snapCfg.step, size = st * 100;
-  const fine = new T.GridHelper(size, 100, 0x2c2e33, 0x2c2e33), major = new T.GridHelper(size, 10, 0x55585f, 0x45484e);
+  const light = document.documentElement.dataset.theme === 'light';
+  const fine = new T.GridHelper(size, 100, light ? 0xd5d8de : 0x2c2e33, light ? 0xd5d8de : 0x2c2e33), major = new T.GridHelper(size, 10, light ? 0xb4b9c2 : 0x55585f, light ? 0xc3c7cf : 0x45484e);
   fine.material.transparent = true; fine.material.opacity = 0.7; fine.position.y = -1e-4;
   grid.add(fine, major);
 }
@@ -1009,6 +1010,11 @@ function showTab(t, toggle) { // open the panel (or, from a button, fold it when
   rsave(); savePanes(); rapply(); renderTop();
 }
 const tabShown = t => !document.body.classList.contains('no-rcol') && !rstate.shut.includes(t);
+const clearColor = () => R.setClearColor(document.documentElement.dataset.theme === 'light' ? 0xe8e9ec : 0x000000);
+A('view.theme', 'テーマ（ダーク / ライト）', '表示', () => { const light = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = light ? 'light' : 'dark';
+  try { localStorage.setItem('nerikone.theme', light ? 'light' : 'dark'); } catch { /* session only */ } clearColor(); buildGrid(); renderTop(); });
+try { if (localStorage.getItem('nerikone.theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch { /* default dark */ }
+clearColor();
 A('view.lite', '軽量表示（ぼかしなし）', '表示', () => { document.body.classList.toggle('lite'); try { localStorage.setItem('nerikone.lite', document.body.classList.contains('lite') ? '1' : '0'); } catch { /* session only */ } renderTop(); });
 try { if (localStorage.getItem('nerikone.lite') === '1') document.body.classList.add('lite'); } catch { /* default */ }
 A('view.strip', '履歴バー（横）', '表示', () => { document.body.classList.toggle('no-strip'); try { localStorage.setItem('nerikone.strip', document.body.classList.contains('no-strip') ? '0' : '1'); } catch { /* session only */ } renderStrip(); renderTop(); });
@@ -1126,6 +1132,7 @@ function viewMenu(e) {
     ...(S.workPlane ? [{icon: 'blank', label: '作業平面を地面に戻す', run: () => run('plane.clear')}] : []),
     {icon: 'eye', label: 'すべて表示', key: K('hide.unhide'), run: () => run('hide.unhide')},
     {icon: document.body.classList.contains('no-strip') ? 'blank' : 'check', label: '履歴バー（横）', run: () => run('view.strip')},
+    {icon: document.documentElement.dataset.theme === 'light' ? 'check' : 'blank', label: 'ライトテーマ', run: () => run('view.theme')},
     {icon: document.body.classList.contains('lite') ? 'check' : 'blank', label: '軽量表示（ぼかしなし）', run: () => run('view.lite')},
     {icon: soundOn() ? 'check' : 'blank', label: '効果音', run: () => run('sound.toggle')},
     {icon: 'blank', label: `効果音の大きさ: ${volumeLabel()}`, run: () => { nextVolume(); sfx('click'); }},
@@ -1424,11 +1431,57 @@ function bindFeatures(root) {
 }
 const stripEl = Object.assign(document.createElement('div'), {id: 'tlstrip', className: 'glass', hidden: true}); view.append(stripEl);
 try { if (localStorage.getItem('nerikone.strip') === '0') document.body.classList.add('no-strip'); } catch { /* default: on */ }
+// ---- the card over a history step: a small picture of the model after that step, the step's name and what it changed
+const THUMB = 120, thumbCache = new Map();
+let thumbRenderer = null;
+async function thumbFor(index) {
+  const key = S.doc.features.slice(0, index + 1).map(f => f.id + ':' + JSON.stringify(f.params) + (f.suppressed ? 's' : '')).join('|');
+  if (thumbCache.has(key)) return thumbCache.get(key);
+  const sc = (await get('api/step?i=' + index)).scene, sceneT = new T.Scene(), box = new T.Box3();
+  sceneT.add(new T.HemisphereLight(0xffffff, 0x3a3d45, 1.6)); const sun = new T.DirectionalLight(0xffffff, 2.2); sun.position.set(3, -4, 6); sceneT.add(sun);
+  for (const [n, b] of Object.entries(sc)) {
+    if (b.kind === 'Dimension') continue;
+    for (const f of b.faces) {
+      if (!f.verts.length) continue;
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(f.verts, 3)); g.setIndex(f.tris); g.computeVertexNormals();
+      const m = new T.Mesh(g, new T.MeshStandardMaterial({color: f.color || b.color || '#9aa7bd', roughness: 0.6, metalness: 0.05, side: T.DoubleSide}));
+      sceneT.add(m); box.expandByObject(m);
+    }
+    for (const e of b.edges || []) { const l = new T.Line(new T.BufferGeometry().setFromPoints(e.pts.map(V)), new T.LineBasicMaterial({color: 0x1a1b1e})); sceneT.add(l); box.expandByObject(l); }
+  }
+  let url = '';
+  if (!box.isEmpty()) {
+    thumbRenderer ||= Object.assign(new T.WebGLRenderer({antialias: true, alpha: true, preserveDrawingBuffer: true}), {});
+    thumbRenderer.setSize(THUMB, THUMB, false); thumbRenderer.setPixelRatio(2);
+    const c = box.getCenter(new T.Vector3()), r = Math.max(box.getSize(new T.Vector3()).length(), 1e-3), cam2 = new T.PerspectiveCamera(30, 1, r * 0.05, r * 20);
+    cam2.up.set(0, 0, 1); cam2.position.copy(c).add(new T.Vector3(0.75, -1, 0.65).normalize().multiplyScalar(r * 1.9)); cam2.lookAt(c);
+    thumbRenderer.render(sceneT, cam2); url = thumbRenderer.domElement.toDataURL('image/png');
+  }
+  sceneT.traverse(o => { o.geometry?.dispose(); o.material?.dispose?.(); });
+  thumbCache.set(key, url); if (thumbCache.size > 120) thumbCache.delete(thumbCache.keys().next().value);
+  return url;
+}
+const stepCard = Object.assign(document.createElement('div'), {id: 'stepcard', className: 'glass', hidden: true}); document.body.append(stepCard);
+let cardTimer = null, cardFor = null;
+function showStepCard(el) {
+  const id = +el.dataset.f, i = S.doc.features.findIndex(f => f.id === id), f = S.doc.features[i]; if (!f) return;
+  cardFor = id; clearTimeout(cardTimer);
+  cardTimer = setTimeout(async () => {
+    const r = el.getBoundingClientRect();
+    stepCard.innerHTML = `<div class="thumb">${icon(cmdIcon(f))}</div><div class="meta"><b>${i + 1}. ${esc(TOOL_JA[f.cmd] || f.label)}</b><span>${esc(Object.entries(f.params || {}).filter(([k, v]) => !['edges', 'grid', 'points', 'sections', 'blob', 'name', 'at', 'on_body', 'origin', 'normal', 'xdir'].includes(k) && v !== '' && v !== null && v !== false).slice(0, 5).map(([k, v]) => `${DIM_JA[k] || k} ${Array.isArray(v) ? v.map(n => typeof n === 'number' ? fmtN(n) : n).join(', ') : typeof v === 'number' ? fmtN(v) : v}`).join(' · '))}</span>${f.error ? `<em>${esc(friendly(f.error))}</em>` : ''}${f.suppressed ? '<em>抑制中</em>' : ''}</div>`;
+    stepCard.hidden = false; stepCard.style.left = Math.max(8, Math.min(innerWidth - 232, r.left + r.width / 2 - 108)) + 'px'; stepCard.style.top = Math.max(8, r.top - stepCard.offsetHeight - 10) + 'px';
+    try { const url = await thumbFor(i); if (cardFor === id && url) stepCard.querySelector('.thumb').innerHTML = `<img src="${url}" width="${THUMB / 2}" height="${THUMB / 2}" alt="">`; } catch { /* the icon stays */ }
+    stepCard.style.top = Math.max(8, r.top - stepCard.offsetHeight - 10) + 'px';
+  }, 220);
+}
+const hideStepCard = () => { clearTimeout(cardTimer); cardFor = null; stepCard.hidden = true; };
+document.addEventListener('mouseover', e => { const el = e.target.closest?.('#tlstrip .tc, #timeline .chip'); if (el) showStepCard(el); else if (!e.target.closest?.('#stepcard')) hideStepCard(); });
+document.addEventListener('pointerdown', hideStepCard, true);
 let stripCount = -1;
 function renderStrip() {
   const on = !document.body.classList.contains('no-strip') && S.doc.features.length > 0;
   document.body.classList.toggle('tl-strip', on); stripEl.hidden = !on; if (!on) return;
-  stripEl.innerHTML = S.doc.features.map((f, i) => `<button class="tc ${f.id === S.feature ? 'on' : ''} ${f.error ? 'err' : ''} ${f.suppressed ? 'off' : ''}" data-f="${f.id}" data-tip="${esc((i + 1) + '  ' + (f.error ? friendly(f.error) : (TOOL_JA[f.cmd] || f.label)))}" aria-label="${esc(TOOL_JA[f.cmd] || f.label)}">${icon(cmdIcon(f))}</button>`).join('');
+  stripEl.innerHTML = S.doc.features.map((f, i) => `<button class="tc ${f.id === S.feature ? 'on' : ''} ${f.error ? 'err' : ''} ${f.suppressed ? 'off' : ''}" data-f="${f.id}" aria-label="${esc(TOOL_JA[f.cmd] || f.label)}">${icon(cmdIcon(f))}</button>`).join('');
   bindFeatures(stripEl);
   if (S.doc.features.length !== stripCount) { stripCount = S.doc.features.length; stripEl.scrollLeft = stripEl.scrollWidth; }
 }
@@ -1570,6 +1623,7 @@ function fitIso(pts, w = 200, h = 118) { // scale + centre a list of points into
   return p => [p[0] * k + ox, p[1] * k + oy];
 }
 const pth = (...ps) => ps.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('') + 'z';
+const bodyScale = () => { const b = S.doc.bodies[S.sel.edges[0]?.body || S.sel.bodies[0] || S.sel.faces[0]?.body]; return b ? Math.max(...[0, 1, 2].map(i => b.bbox[1][i] - b.bbox[0][i])) : 4; };
 const BUILD = {
   'body.box'(v) {
     const m = Math.max(v.length, v.width, v.height) || 1, l = clampR(v.length || 1, m), w = clampR(v.width || 1, m), h = clampR(v.height || 1, m);
@@ -1593,6 +1647,21 @@ const BUILD = {
     return {svg: dgSvg(`<path class="f2" d="M${cx - tx} ${top}L${cx - rx} ${bot}a${rx} ${ry} 0 0 0 ${2 * rx} 0L${cx + tx} ${top}a${tx} ${Math.max(ty, 0.01)} 0 0 1 ${-2 * tx} 0z"/><path d="M${cx - tx} ${top}L${cx - rx} ${bot}a${rx} ${ry} 0 0 0 ${2 * rx} 0L${cx + tx} ${top}"/><ellipse class="f1" cx="${cx}" cy="${top}" rx="${Math.max(tx, 0.5)}" ry="${Math.max(ty, 0.2)}"/>` +
       `<path class="dm e-bottom_radius" d="M${cx} ${bot}h${rx}"/><path class="dm e-top_radius" d="M${cx} ${top}h${tx}"/><path class="dm e-height" d="M${cx - rx - 10} ${top}v${hh}"/>`),
       slots: [['bottom_radius', cx + rx / 2, bot + 18], ['top_radius', cx + tx / 2 + 10, top - 14], ['height', cx - rx - 36, top + hh / 2]]};
+  },
+  'edge.fillet'(v) { // a corner seen from the side: the rounding grows with the radius (as a share of the drawn corner)
+    const q = Math.min(Math.max(v.radius || 0.2, 0.001), 1000), k = Math.min(0.92, Math.max(0.08, q / (bodyScale() || 4) * 1.2)), s = 70, r = s * k, x0 = 50, y0 = 118, x1 = 190, y1 = 30;
+    return {svg: dgSvg(`<path class="f2" d="M${x0} ${y0}V${y1 + r}A${r} ${r} 0 0 1 ${x0 + r} ${y1}H${x1}V${y0}z"/><path class="sharp" d="M${x0} ${y0}V${y1}H${x1}" opacity=".55" stroke-dasharray="3 3"/><path d="M${x0} ${y0}V${y1 + r}A${r} ${r} 0 0 1 ${x0 + r} ${y1}H${x1}" stroke-width="2"/><path d="M${x0} ${y1 + r}H${x0 + r}V${y1}" class="dm e-radius"/>`),
+      slots: [['radius', x0 + r + 26, y1 + r + 20]]};
+  },
+  'edge.chamfer'(v) {
+    const q = Math.min(Math.max(v.length || 0.2, 0.001), 1000), k = Math.min(0.92, Math.max(0.08, q / (bodyScale() || 4) * 1.2)), s = 70, r = s * k, x0 = 50, y0 = 118, x1 = 190, y1 = 30;
+    return {svg: dgSvg(`<path class="f2" d="M${x0} ${y0}V${y1 + r}L${x0 + r} ${y1}H${x1}V${y0}z"/><path class="sharp" d="M${x0} ${y0}V${y1}H${x1}" opacity=".55" stroke-dasharray="3 3"/><path d="M${x0} ${y0}V${y1 + r}L${x0 + r} ${y1}H${x1}" stroke-width="2"/><path d="M${x0} ${y1 + r}H${x0 + r}V${y1}" class="dm e-length"/>`),
+      slots: [['length', x0 + r + 26, y1 + r + 20]]};
+  },
+  'body.shell'(v) { // the wall thickness against the body: the hollow shrinks as the walls thicken
+    const t = Math.min(Math.max(v.thickness || 0.1, 0.001), 1000), k = Math.min(0.46, Math.max(0.04, t / (bodyScale() || 4) * 1.1)), w = 150, h = 88, x0 = 45, y0 = 40;
+    return {svg: dgSvg(`<rect class="f2" x="${x0}" y="${y0}" width="${w}" height="${h}" rx="6"/><rect x="${x0 + w * k}" y="${y0 + h * k}" width="${w * (1 - 2 * k)}" height="${h * (1 - 2 * k)}" rx="3" fill="var(--bg)"/><path class="dm e-thickness" d="M${x0} ${y0 + h / 2}h${w * k}"/>`),
+      slots: [['thickness', x0 + w * k / 2 + 6, y0 + h / 2 - 22]]};
   },
   'body.torus'(v) {
     const M = v.major_radius || 2, n = Math.min(v.minor_radius || 0.5, M * 0.95), q = Math.max(n / M, 0.08), rx = 92, ry = 46, inner = rx * (1 - q) * 0.9;
@@ -2687,7 +2756,7 @@ function setRender(on) {
   S.render = on;
   scene.environment = on ? envTex : null;
   scene.background = on ? renderBackground(S.renderBg) : null;
-  R.setClearColor(0x1d1e21);
+  R.setClearColor(document.documentElement.dataset.theme === 'light' ? 0xe8e9ec : 0x1d1e21);
   R.toneMapping = on ? T.ACESFilmicToneMapping : T.NoToneMapping;
   grid.visible = axesLines.visible = !on; ground.visible = on; sun.castShadow = on; hemi.intensity = on ? 0.4 : 1.3;
   if (on) {

@@ -39,6 +39,11 @@ def handle(method, path, query=None, body=b""):
                 return _json({"version": version})
             if path == "/api/state":
                 return _json(_state(q.get("scene", "1") != "0"))
+            if path == "/api/step":
+                i = int(q.get("i", "-1"))
+                if not 0 <= i < len(doc.states):
+                    raise K.BadParams("no such step")
+                return _json({"scene": K.scene(doc.states[i])})
             if path == "/api/inspect":
                 name = q.get("body", "")
                 if name not in doc.bodies:
