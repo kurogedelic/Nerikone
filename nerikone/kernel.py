@@ -759,9 +759,9 @@ def _fext(B, p):
         out = b.fuse(prism) if p["amount"] > 0 else b.cut(prism)
     except sm.ModelingError as e:
         if "touch only along" in str(e) or "not a closed" in str(e):
-            raise BadParams("this face cannot be pushed or pulled on its own: it is one piece of a level that was split into several "
-                            "faces (by earlier keep-face steps), and the kernel cannot join the new block to them. Undo the split "
-                            "steps, or move the whole level (select its faces and use move) instead") from None
+            raise BadParams("the kernel could not join the new block to the body here (the block's side lies exactly on an existing wall, "
+                            "and the faces around this one are at the same height). Try pulling a neighbouring face, or undo the "
+                            "last steps around this spot") from None
         raise
     if not out.is_valid():
         raise BadParams("the result would not be a closed solid (the cut goes all the way through)")
