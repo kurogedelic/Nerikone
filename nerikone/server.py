@@ -196,11 +196,6 @@ class H(BaseHTTPRequestHandler):
                         return self._json({"version": s.version})
                     if path == "/api/state":
                         return self._json(state(s, q.get("scene", "1") != "0"))
-                    if path == "/api/step":  # the bodies as they were after step i (history thumbnails)
-                        i = int(q.get("i", "-1"))
-                        if not 0 <= i < len(doc.states):
-                            raise K.BadParams("no such step")
-                        return self._json({"scene": K.scene(doc.states[i])})
                     if path == "/api/inspect":
                         name = q.get("body", "")
                         if name not in doc.bodies:

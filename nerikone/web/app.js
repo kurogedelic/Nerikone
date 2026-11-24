@@ -1431,46 +1431,23 @@ function bindFeatures(root) {
 }
 const stripEl = Object.assign(document.createElement('div'), {id: 'tlstrip', className: 'glass', hidden: true}); view.append(stripEl);
 try { if (localStorage.getItem('nerikone.strip') === '0') document.body.classList.add('no-strip'); } catch { /* default: on */ }
-// ---- the card over a history step: a small picture of the model after that step, the step's name and what it changed
-const THUMB = 120, thumbCache = new Map();
-let thumbRenderer = null;
-async function thumbFor(index) {
-  const key = S.doc.features.slice(0, index + 1).map(f => f.id + ':' + JSON.stringify(f.params) + (f.suppressed ? 's' : '')).join('|');
-  if (thumbCache.has(key)) return thumbCache.get(key);
-  const sc = (await get('api/step?i=' + index)).scene, sceneT = new T.Scene(), box = new T.Box3();
-  sceneT.add(new T.HemisphereLight(0xffffff, 0x3a3d45, 1.6)); const sun = new T.DirectionalLight(0xffffff, 2.2); sun.position.set(3, -4, 6); sceneT.add(sun);
-  for (const [n, b] of Object.entries(sc)) {
-    if (b.kind === 'Dimension') continue;
-    for (const f of b.faces) {
-      if (!f.verts.length) continue;
-      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(f.verts, 3)); g.setIndex(f.tris); g.computeVertexNormals();
-      const m = new T.Mesh(g, new T.MeshStandardMaterial({color: f.color || b.color || '#9aa7bd', roughness: 0.6, metalness: 0.05, side: T.DoubleSide}));
-      sceneT.add(m); box.expandByObject(m);
-    }
-    for (const e of b.edges || []) { const l = new T.Line(new T.BufferGeometry().setFromPoints(e.pts.map(V)), new T.LineBasicMaterial({color: 0x1a1b1e})); sceneT.add(l); box.expandByObject(l); }
-  }
-  let url = '';
-  if (!box.isEmpty()) {
-    thumbRenderer ||= Object.assign(new T.WebGLRenderer({antialias: true, alpha: true, preserveDrawingBuffer: true}), {});
-    thumbRenderer.setSize(THUMB, THUMB, false); thumbRenderer.setPixelRatio(2);
-    const c = box.getCenter(new T.Vector3()), r = Math.max(box.getSize(new T.Vector3()).length(), 1e-3), cam2 = new T.PerspectiveCamera(30, 1, r * 0.05, r * 20);
-    cam2.up.set(0, 0, 1); cam2.position.copy(c).add(new T.Vector3(0.75, -1, 0.65).normalize().multiplyScalar(r * 1.9)); cam2.lookAt(c);
-    thumbRenderer.render(sceneT, cam2); url = thumbRenderer.domElement.toDataURL('image/png');
-  }
-  sceneT.traverse(o => { o.geometry?.dispose(); o.material?.dispose?.(); });
-  thumbCache.set(key, url); if (thumbCache.size > 120) thumbCache.delete(thumbCache.keys().next().value);
-  return url;
+// ---- the card over a history step: a rough drawing made from the step's own numbers (the same builders as the parameter drawings), no
+// geometry is rebuilt and nothing is rendered; steps without a drawing show their pictogram
+function roughThumb(f) {
+  const cmd = S.cmds[f.cmd], vals = {};
+  for (const q of cmd?.params || []) if (q.type === 'float' || q.type === 'int') vals[q.name] = +(f.params?.[q.name] ?? q.default);
+  const b = BUILD[f.cmd]?.(vals) || DIAGRAMS[f.cmd];
+  return b ? b.svg : icon(cmdIcon(f));
 }
 const stepCard = Object.assign(document.createElement('div'), {id: 'stepcard', className: 'glass', hidden: true}); document.body.append(stepCard);
 let cardTimer = null, cardFor = null;
 function showStepCard(el) {
   const id = +el.dataset.f, i = S.doc.features.findIndex(f => f.id === id), f = S.doc.features[i]; if (!f) return;
   cardFor = id; clearTimeout(cardTimer);
-  cardTimer = setTimeout(async () => {
+  cardTimer = setTimeout(() => {
     const r = el.getBoundingClientRect();
-    stepCard.innerHTML = `<div class="thumb">${icon(cmdIcon(f))}</div><div class="meta"><b>${i + 1}. ${esc(TOOL_JA[f.cmd] || f.label)}</b><span>${esc(Object.entries(f.params || {}).filter(([k, v]) => !['edges', 'grid', 'points', 'sections', 'blob', 'name', 'at', 'on_body', 'origin', 'normal', 'xdir'].includes(k) && v !== '' && v !== null && v !== false).slice(0, 5).map(([k, v]) => `${DIM_JA[k] || k} ${Array.isArray(v) ? v.map(n => typeof n === 'number' ? fmtN(n) : n).join(', ') : typeof v === 'number' ? fmtN(v) : v}`).join(' · '))}</span>${f.error ? `<em>${esc(friendly(f.error))}</em>` : ''}${f.suppressed ? '<em>抑制中</em>' : ''}</div>`;
+    stepCard.innerHTML = `<div class="thumb">${roughThumb(f)}</div><div class="meta"><b>${i + 1}. ${esc(TOOL_JA[f.cmd] || f.label)}</b><span>${esc(Object.entries(f.params || {}).filter(([k, v]) => !['edges', 'grid', 'points', 'sections', 'blob', 'name', 'at', 'on_body', 'origin', 'normal', 'xdir'].includes(k) && v !== '' && v !== null && v !== false).slice(0, 5).map(([k, v]) => `${DIM_JA[k] || k} ${Array.isArray(v) ? v.map(n => typeof n === 'number' ? fmtN(n) : n).join(', ') : typeof v === 'number' ? fmtN(v) : v}`).join(' · '))}</span>${f.error ? `<em>${esc(friendly(f.error))}</em>` : ''}${f.suppressed ? '<em>抑制中</em>' : ''}</div>`;
     stepCard.hidden = false; stepCard.style.left = Math.max(8, Math.min(innerWidth - 232, r.left + r.width / 2 - 108)) + 'px'; stepCard.style.top = Math.max(8, r.top - stepCard.offsetHeight - 10) + 'px';
-    try { const url = await thumbFor(i); if (cardFor === id && url) stepCard.querySelector('.thumb').innerHTML = `<img src="${url}" width="${THUMB / 2}" height="${THUMB / 2}" alt="">`; } catch { /* the icon stays */ }
     stepCard.style.top = Math.max(8, r.top - stepCard.offsetHeight - 10) + 'px';
   }, 220);
 }
