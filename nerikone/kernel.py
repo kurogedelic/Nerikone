@@ -1765,6 +1765,49 @@ def write_3mf(meshes, unit="millimeter") -> bytes:
     return buf.getvalue()
 
 
+def _svg_with_dimensions(svg, views, units):
+    """The drawing with each view's overall width and height dimensioned (in the document's unit), on a sheet of true size.
+    The SVG writer takes model units as millimetres, so the sheet size is rescaled for cm / m / in documents."""
+    k = {"mm": 1, "cm": 10, "m": 1000, "in": 25.4}[units]
+    m = re.search(r'viewBox="([^"]+)"', svg)
+    if not m:
+        return svg
+    x0, y0, w, h = (float(v) for v in m.group(1).split())
+    size = max(w, h)
+    fs, off, tick = size / 55, size / 40, size / 120
+    parts, lo_x, lo_y, hi_x, hi_y = [], x0, y0, x0 + w, y0 + h
+    for v in views:
+        try:
+            bb = v.bbox()
+        except Exception:
+            continue
+        ax, bx, ay, by = bb.min[0], bb.max[0], -bb.max[1], -bb.min[1]  # the SVG's y runs down
+        for horizontal, a, b, val in ((True, ax, bx, bx - ax), (False, ay, by, by - ay)):
+            if val < 1e-9:
+                continue
+            label = f"{val:.4g} {units}"
+            if horizontal:
+                y = by + off
+                parts.append(f'<path d="M{ax:.6g} {y:.6g}H{bx:.6g}M{ax:.6g} {by + off / 3:.6g}V{y + tick:.6g}M{bx:.6g} {by + off / 3:.6g}V{y + tick:.6g}"/>')
+                parts.append(f'<text x="{(ax + bx) / 2:.6g}" y="{y - tick:.6g}" text-anchor="middle">{label}</text>')
+                hi_y = max(hi_y, y + fs)
+            else:
+                x = bx + off
+                parts.append(f'<path d="M{x:.6g} {ay:.6g}V{by:.6g}M{bx + off / 3:.6g} {ay:.6g}H{x + tick:.6g}M{bx + off / 3:.6g} {by:.6g}H{x + tick:.6g}"/>')
+                parts.append(f'<text x="{x + fs * 1.1:.6g}" y="{(ay + by) / 2:.6g}" text-anchor="middle" transform="rotate(90 {x + fs * 1.1:.6g} {(ay + by) / 2:.6g})">{label}</text>')
+                hi_x = max(hi_x, x + fs * 2.2)
+    if not parts:
+        return svg
+    nx0, ny0, nw, nh = lo_x, lo_y, hi_x - lo_x, hi_y - lo_y
+    g = (f'<g fill="none" stroke="#1565c0" stroke-width="{size / 700:.6g}" font-family="sans-serif" font-size="{fs:.6g}">'
+         + "".join(parts).replace("<text", '<text fill="#1565c0" stroke="none"') + "</g>\n</svg>")
+    svg = svg.replace("</svg>", g, 1)
+    svg = re.sub(r'viewBox="[^"]+"', f'viewBox="{nx0:.6g} {ny0:.6g} {nw:.6g} {nh:.6g}"', svg, count=1)
+    svg = re.sub(r'(<svg[^>]*?\swidth=")[0-9.eE+-]+mm"', lambda mm: f'{mm.group(1)}{nw * k:.6g}mm"', svg, count=1)
+    svg = re.sub(r'(<svg[^>]*?\sheight=")[0-9.eE+-]+mm"', lambda mm: f'{mm.group(1)}{nh * k:.6g}mm"', svg, count=1)
+    return svg
+
+
 def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: float | None = None) -> bytes:
     """`tolerance` (model units) sets how finely curved faces are faceted in the mesh formats (stl, 3mf, obj, wrl)."""
     if fmt == "nrk":
@@ -1796,15 +1839,7 @@ def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: f
         views = sm.drawing_views(parts)
         if fmt == "dxf":
             return sm.to_dxf(views, unit=step_unit).encode()
-        # the SVG writer takes model units as mm: give the sheet its true size for the document's unit (coordinates stay)
-        k = {"mm": 1, "cm": 10, "m": 1000, "in": 25.4}[doc.units]
-        svg = sm.to_svg(views)
-        if k != 1:
-            svg = re.sub(r'(<svg[^>]*?\b(?:width|height)=")([0-9.eE+-]+)mm"',
-                         lambda m: f'{m.group(1)}{float(m.group(2)) * k:.6g}mm"', svg, count=1)
-            svg = re.sub(r'(<svg[^>]*?\bheight=")([0-9.eE+-]+)mm"',
-                         lambda m: f'{m.group(1)}{float(m.group(2)) * k:.6g}mm"', svg, count=1)
-        return svg.encode()
+        return _svg_with_dimensions(sm.to_svg(views), views, doc.units).encode()
     if fmt == "wrl":
         meshes = []
         for n, b in doc.bodies.items():

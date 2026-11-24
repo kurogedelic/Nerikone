@@ -515,6 +515,8 @@ const EN = {
   '球': 'Sphere',
   '幅': 'width',
   '色': 'Colour',
+  '始点 X': 'Start X',
+  '始点 Y': 'Start Y',
   '式を読めません': 'cannot read the expression',
   '式が途中です': 'the expression is unfinished',
   'かっこが閉じていません': 'a parenthesis is not closed',

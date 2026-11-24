@@ -124,7 +124,10 @@ def _jacobian(x, f, r0):
     return [[cols[j][i] for j in range(len(x))] for i in range(len(r0))]  # rows = residuals
 
 
-def _min_norm_step(J, r, lam=1e-10):
+PIVOT = 1e-8  # a pivot this small (relative) is a constraint that repeats others: it adds nothing and must not blow the step up
+
+
+def _min_norm_step(J, r, lam=1e-4):
     """dx = -J^T (J J^T + lam I)^-1 r: the smallest step that zeroes the linearised residuals."""
     m, n = len(J), len(J[0]) if J else 0
     A = [[sum(J[i][k] * J[j][k] for k in range(n)) + (lam if i == j else 0.0) for j in range(m)] for i in range(m)]
@@ -140,7 +143,7 @@ def _solve(A, b):
     for c in range(n):
         p = max(range(c, n), key=lambda i: abs(M[i][c]))
         M[c], M[p] = M[p], M[c]
-        if abs(M[c][c]) < 1e-12 * scale:
+        if abs(M[c][c]) < PIVOT * scale:
             continue
         for i in range(c + 1, n):
             f = M[i][c] / M[c][c]
@@ -149,7 +152,7 @@ def _solve(A, b):
                     M[i][k] -= f * M[c][k]
     y = [0.0] * n
     for c in range(n - 1, -1, -1):
-        if abs(M[c][c]) < 1e-12 * scale:
+        if abs(M[c][c]) < PIVOT * scale:
             continue
         y[c] = (M[c][n] - sum(M[c][k] * y[k] for k in range(c + 1, n))) / M[c][c]
     return y
@@ -195,7 +198,7 @@ def solve(points, constraints, closed=True, bulges=()):
     x = list(x0)
     r = f(x)
     err = lambda r: math.sqrt(sum(v * v for v in r))  # noqa: E731
-    for _ in range(60):
+    for _ in range(200):
         if err(r) < 1e-10 * size:
             break
         J = _jacobian(x, f, r)

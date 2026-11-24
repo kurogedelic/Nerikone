@@ -118,3 +118,17 @@ def test_conflicting_sketch_is_refused():
         build(("sketch.polygon", {"points": RECT, "constraints": [["length", 0, 3], ["length", 0, 4]]}))
     with pytest.raises(K.BadParams):
         build(("sketch.polygon", {"points": RECT, "constraints": [["bogus"]]}))
+
+
+def test_a_constraint_that_becomes_redundant_does_not_collapse_the_shape():
+    """equal on two opposite sides of an axis-aligned rectangle is true by itself once the others hold: the free height must stay as drawn."""
+    pts, dof = C.solve(RECT, HV + [["length", 0, 3], ["equal", 1, 3]])
+    assert pts[1][0] - pts[0][0] == approx(3)
+    assert abs(pts[2][1] - pts[1][1]) == approx(abs(RECT[2][1] - RECT[1][1]), abs=0.3)  # about as tall as it was drawn
+    assert dof == 2
+
+
+def test_redundant_sets_keep_what_was_drawn():
+    base, _ = C.solve(RECT, HV)
+    pts, _ = C.solve(RECT, HV + [["parallel", 0, 2], ["parallel", 1, 3], ["perpendicular", 0, 1], ["equal", 1, 3], ["equal", 0, 2]])
+    assert close(pts, base, 0.15)

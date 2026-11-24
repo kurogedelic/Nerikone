@@ -120,3 +120,21 @@ def test_drawing_sheet_is_true_size(units, k):
     w = float(re.search(r'width="([0-9.]+)mm"', head).group(1))
     vb = [float(x) for x in re.search(r'viewBox="([^"]+)"', head).group(1).split()]
     assert w == approx(vb[2] * k, rel=1e-5)
+
+
+def test_drawing_has_overall_dimensions_in_the_document_unit():
+    import re
+    d = build(("body.box", {"length": 8, "width": 6, "height": 3}))
+    d.set_units("m")
+    svg = K.export(d, "svg").decode()
+    labels = re.findall(r"<text[^>]*>([^<]*)</text>", svg)
+    assert sorted(labels) == sorted(["8 m", "3 m", "8 m", "6 m", "6 m", "3 m"])  # front, top, left: width and height each
+    head = re.search(r"<svg[^>]*>", svg).group(0)
+    vb = [float(x) for x in re.search(r'viewBox="([^"]+)"', head).group(1).split()]
+    assert float(re.search(r'width="([0-9.]+)mm"', head).group(1)) == approx(vb[2] * 1000, rel=1e-5)  # the sheet still has its true size
+
+
+def test_drawing_dimensions_follow_the_unit():
+    import re
+    d = build(("body.box", {"length": 80, "width": 60, "height": 30}))
+    assert "80 mm" in re.findall(r"<text[^>]*>([^<]*)</text>", K.export(d, "svg").decode())

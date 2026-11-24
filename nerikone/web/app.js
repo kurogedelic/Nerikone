@@ -1819,7 +1819,7 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
     const cons = () => JSON.parse(JSON.stringify(feature.params.constraints || []));
     el.querySelectorAll('[data-cval]').forEach(i => i.addEventListener('change', e => { e.stopPropagation(); const c = cons(), k = +i.dataset.cval; c[k][c[k].length - 1] = numOf(i.value); setConstraints(feature, c); }));
     el.querySelectorAll('[data-cdel]').forEach(b => b.onclick = () => { const c = cons(); c.splice(+b.dataset.cdel, 1); updateFeature(feature.id, {constraints: c}); });
-    el.querySelectorAll('[data-cadd]').forEach(b => b.onclick = () => { const c = cp.adds[+b.dataset.cadd]; setConstraints(feature, [...cons(), c[0] === 'fix' ? c.slice(0, 2) : c]); });
+    el.querySelectorAll('[data-cadd]').forEach(b => b.onclick = () => { const c = cp.adds[+b.dataset.cadd]; setConstraints(feature, [...cons(), c[0] === 'fix' ? c.slice(0, 2) : c[0] === 'x' || c[0] === 'y' ? c.slice(0, 3) : c]); });
   }
   if (live) {
     el.querySelectorAll('input:not([data-cval]),select,textarea').forEach(i => i.addEventListener('change', go)); // parametric: rebuild on edit
@@ -2481,6 +2481,30 @@ function selectedSegments(f) { // which of the step's segments the selected edge
   }
   return out;
 }
+// Symbols of a sketch's constraints, on the sketch itself: the step shown in the inspector, at the middle of each segment it constrains.
+const CON_SYM = {horizontal: '—', vertical: '|', parallel: '∥', perpendicular: '⊥', equal: '=', length: '', radius: 'R', angle: '∠', fix: '⚓', x: 'x', y: 'y', distance: '↔'};
+const conLabels = Object.assign(document.createElement('div'), {id: 'conlabels'}); view.append(conLabels);
+function placeConLabels() {
+  const f = !S.form && !S.modal && !S.tool ? inspectorFeature() : null;
+  if (!f || !SKETCH_CMDS.has(f.cmd) || !f.params.constraints?.length || f.suppressed || S.render) { if (conLabels.innerHTML) { conLabels.innerHTML = ''; S.conHtml = ''; } return; }
+  const fr = sketchFrame(f), segs = segInfo(f), P = sketchPts(f), vr = view.getBoundingClientRect(), n = P.length;
+  const at = (a, b) => fr.o.clone().addScaledVector(fr.u, a).addScaledVector(fr.v, b);
+  const slot = {}; // several symbols on one segment sit side by side
+  const html = f.params.constraints.map(c => {
+    const ns = CON_SEGS[c[0]] || 0, sym = CON_SYM[c[0]] ?? '';
+    const marks = ns ? c.slice(1, 1 + ns).map(i => [segs[i], i]) : [[null, c[1]]];
+    return marks.map(([sg, i]) => {
+      let w;
+      if (sg) { const [a, b, k] = sg; w = at((a[0] + b[0]) / 2 + (b[1] - a[1]) * k / 2, (a[1] + b[1]) / 2 - (b[0] - a[0]) * k / 2); }
+      else if (c[0] === 'distance') { const a = P[c[1]], b = P[c[2]]; w = at((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); }
+      else w = at(P[i % n][0], P[i % n][1]);
+      const key = w.toArray().map(x => x.toFixed(3)).join(), off = (slot[key] = (slot[key] || 0) + 1) - 1;
+      const sc = screenOf(w), txt = CON_VAL.has(c[0]) && sym !== undefined ? `${sym}${sym && !['x', 'y'].includes(c[0]) ? ' ' : ''}${isExpr(c.at(-1)) ? c.at(-1) : fmtN(+c.at(-1))}` : sym;
+      return `<div class="clabel" style="left:${(sc.x - vr.left + off * 22).toFixed(1)}px;top:${(sc.y - vr.top - 14).toFixed(1)}px" data-tip="${esc(CON_JA[c[0]] || c[0])}">${esc(txt)}</div>`;
+    }).join('');
+  }).join('');
+  if (html !== S.conHtml) { conLabels.innerHTML = html; S.conHtml = html; }
+}
 function conPanel(f) {
   const cons = f.params.constraints || [], segs = segInfo(f), sel = selectedSegments(f), u = S.doc.units || 'mm';
   const dof = f.solved ? f.solved.dof : sketchPts(f).length * 2;
@@ -2495,9 +2519,10 @@ function conPanel(f) {
   const P = sketchPts(f), n = P.length, endPt = (i, end) => (end ? (i + 1) % n : i);
   const adds = sel.length === 1 ? [['horizontal', sel[0]], ['vertical', sel[0]], ['length', sel[0], +len(sel[0]).toFixed(4)],
     ['fix', endPt(sel[0], 0), '始点'], ['fix', endPt(sel[0], 1), '終点'],
+    ['x', endPt(sel[0], 0), +P[endPt(sel[0], 0)][0].toFixed(4), '始点 X'], ['y', endPt(sel[0], 0), +P[endPt(sel[0], 0)][1].toFixed(4), '始点 Y'],
     ...(segs[sel[0]][2] ? [['radius', sel[0], +(len(sel[0]) * (1 + segs[sel[0]][2] ** 2) / (4 * Math.abs(segs[sel[0]][2]))).toFixed(4)]] : [])]
     : sel.length === 2 ? [['parallel', ...sel], ['perpendicular', ...sel], ['equal', ...sel], ['angle', ...sel, +ang(...sel).toFixed(2)]] : [];
-  const addRow = adds.length ? `<div class="ibtns">${adds.map((c, i) => `<button data-cadd="${i}">${esc(c[0] === 'fix' ? c[2] + ' ' + CON_JA.fix : CON_JA[c[0]])}</button>`).join('')}</div>`
+  const addRow = adds.length ? `<div class="ibtns">${adds.map((c, i) => `<button data-cadd="${i}">${esc(c[0] === 'fix' ? c[2] + ' ' + CON_JA.fix : c[0] === 'x' || c[0] === 'y' ? c[3] : CON_JA[c[0]])}</button>`).join('')}</div>`
     : `<div class="hint">スケッチの辺を 1 本か 2 本選ぶと、拘束を足せます</div>`;
   return {html: `<div class="isec cons"><h5 data-tip="拘束" aria-label="拘束">${icon('ruler')} <span class="sub">${dof ? `自由度 ${dof}` : '完全に決まっています'}</span></h5>${rows}${addRow}</div>`, adds};
 }
@@ -3100,7 +3125,7 @@ function placeCtx() {
   let top = y1 + gap; if (top + h > vr.bottom - margin) top = y0 - gap - h; if (top < vr.top + 56) top = vr.bottom - margin - h;
   bar.classList.add('near'); bar.style.left = (left - vr.left) + 'px'; bar.style.top = (top - vr.top) + 'px'; bar.style.bottom = 'auto';
 }
-const tick = () => { orbit.update(); placeCtx(); drawNavGizmo(); updateViewLabel(); placeRulerLabels(); placeDimLabels(); sizeDimSprites(); R.render(scene, cam); };
+const tick = () => { orbit.update(); placeCtx(); drawNavGizmo(); updateViewLabel(); placeRulerLabels(); placeDimLabels(); placeConLabels(); sizeDimSprites(); R.render(scene, cam); };
 R.setAnimationLoop(tick);
 window.nerikone = {S, get cam() { return cam; }, orbit, handles, setMode, setRender, setView, frame, run, tick, registerWebMCP}; // debugging / UI tests
 

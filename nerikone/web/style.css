@@ -486,3 +486,7 @@ button:hover .pic .hole,.mi:hover .pic .hole{transform:scale(1)}                
 /* a number written as an expression over variables (=W/2) */
 input.num.expr{color:var(--acc)}
 input.num.expr.bad{color:var(--err)}
+/* constraint symbols on a sketch */
+#conlabels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.clabel{position:absolute;transform:translate(-50%,-50%);min-width:18px;height:18px;padding:0 4px;display:flex;align-items:center;justify-content:center;
+  border-radius:9px;background:var(--glass);border:1px solid var(--acc);color:var(--acc);font:600 var(--fs-s) var(--font);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
