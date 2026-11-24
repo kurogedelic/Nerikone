@@ -354,3 +354,6 @@ input[type=color]{height:var(--ctl);padding:2px}
 #ctxbar button{width:44px;height:44px}
 /* the top bar is made of pills: everything inside is fully round too (circles for icons, pills for labels) */
 #top .grp button,#top .seg,#top .seg button,#top select,#addbtn{border-radius:999px}
+/* the selection bar at the bottom is a pill too: round container, round buttons */
+#ctxbar{border-radius:999px;padding-left:18px;padding-right:10px}
+#ctxbar button{border-radius:999px}
