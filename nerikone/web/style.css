@@ -421,3 +421,32 @@ label.scrub{cursor:ew-resize}
 #tlstrip .tc.err{color:var(--err)}
 #tlstrip .tc.err::after{content:'';position:absolute;top:5px;right:6px;width:6px;height:6px;border-radius:3px;background:var(--err)}
 body.tl-strip #ctxbar:not(.near){bottom:60px}
+
+/* idle inspector: state as icons */
+.irow.icons{justify-content:flex-start;gap:4px;flex-wrap:wrap;min-height:32px}
+.irow.icons .grow{flex:1}
+.ib,.itog{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;color:var(--dim);cursor:pointer;position:relative}
+.ib:hover,.itog:hover{background:var(--hover);color:var(--fg)}
+.ib.on,.itog:has(input:checked){background:var(--acc-bg);color:var(--acc)}
+.itog input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.isel{display:inline-flex;align-items:center;gap:4px;color:var(--dim)}
+.isel select{width:auto;min-width:0;padding-right:18px}
+.isec>h5{font-size:0;gap:0;margin-bottom:4px}.isec>h5 .ti{font-size:15px;color:var(--dim)}
+
+/* solid faces: top / left / right in three steps of one colour (neutral grey by default, yellow when active or hovered) */
+.pic .f1{fill:currentColor;fill-opacity:.34}.pic .f2{fill:currentColor;fill-opacity:.2}.pic .f3{fill:currentColor;fill-opacity:.1}
+.pic .hole{fill:var(--bg);stroke-width:1.2}
+/* motion that shows what the command does (hover); short, and off for people who ask for less motion */
+.pic .up{transition:transform .28s var(--ease)}
+button:hover .pic .up,.mi:hover .pic .up{transform:translateY(-2.6px)}                       /* extrude: the top rises */
+.pic .sharp{transition:opacity .28s}button:hover .pic .sharp,.mi:hover .pic .sharp{opacity:0}  /* fillet / chamfer: the sharp corner is gone */
+.pic .hole{transform-origin:12px 9.3px;transform:scale(.2);transition:transform .3s var(--ease)}
+button:hover .pic .hole,.mi:hover .pic .hole{transform:scale(1)}                              /* shell: the inside is hollowed out */
+@media (prefers-reduced-motion:reduce){.pic *{transition:none!important;animation:none!important}.pic .hole{transform:none}.mi,.ib,button{transition:none!important}}
+
+.diag.dyn .slot{transform:translate(-50%,-50%);align-items:center}
+.diag.dyn .slot>span{display:none}
+.diag.dyn .slot input{width:58px;height:22px;padding:0 4px;background:#0d0e10cc;text-align:center}
+.diag[data-hl=length] .e-length,.diag[data-hl=width] .e-width,.diag[data-hl=height] .e-height,.diag[data-hl=radius] .e-radius,.diag[data-hl=bottom_radius] .e-bottom_radius,
+.diag[data-hl=top_radius] .e-top_radius,.diag[data-hl=major_radius] .e-major_radius,.diag[data-hl=minor_radius] .e-minor_radius{stroke:var(--acc);stroke-width:2.6;stroke-dasharray:none;opacity:1}
+.diag svg .dm{transition:stroke-width .15s,opacity .15s}

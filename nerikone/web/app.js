@@ -1309,7 +1309,7 @@ function showMenu(x, y, items) {
   let html = '', run = '';
   const flush = () => { if (run) html += `<div class="mgrid">${run}</div>`; run = ''; };
   items.forEach((it, i) => {
-    if (it?.tile) { run += `<div class="mi tile" data-i="${i}" data-tip="${esc(it.label)}">${icon(it.icon)}<span>${esc(it.short || it.label)}</span></div>`; return; }
+    if (it?.tile) { run += `<div class="mi tile" data-i="${i}" data-tip="${esc(it.label)}" aria-label="${esc(it.label)}">${icon(it.icon)}</div>`; return; }
     flush();
     html += it?.header ? `<div class="mh">${esc(it.header)}</div>` : it ? `<div class="mi ${it.dis ? 'dis' : ''}" data-i="${i}">${icon(it.icon)}<span>${esc(it.label)}</span><span class="k">${esc(it.key || '')}</span></div>` : '<div class="msep"></div>';
   });
@@ -1437,7 +1437,7 @@ function renderPanels() {
   const kindIcon = {Part: 'part', Shell: 'shell_body', Mesh: 'mesh', Dimension: 'dimension', Sketch: 'rectangle', Wire: 'pencil'};
   $('outliner').innerHTML = Object.entries(S.doc.bodies).map(([n, b]) =>
     `<div class="orow ${S.sel.bodies.includes(n) ? 'sel' : ''} ${S.hidden.has(n) ? 'hidden' : ''}" data-body="${esc(n)}" title="${esc(b.kind)}">
-      ${icon(kindIcon[b.kind] || 'part')}<span class="name">${esc(n)}</span><button class="swatch" data-mat="${esc(n)}" data-tip="素材と色" style="--c:${esc(b.color || b.mat_color || '#9aa7bd')}"></button><span class="vol">${b.volume != null ? b.volume.toFixed(2) : ''}</span>
+      ${icon(kindIcon[b.kind] || 'part')}<span class="name">${esc(n)}</span><button class="swatch" data-mat="${esc(n)}" data-tip="素材と色" style="--c:${esc(b.color || b.mat_color || '#9aa7bd')}"></button>
       <button data-eye="${esc(n)}" data-tip="表示 / 非表示" data-key="${esc(KM.shortcutOf('hide.selected'))}">${icon(S.hidden.has(n) ? 'eye-off' : 'eye')}</button></div>`).join('') || '<div class="orow none">ボディはまだありません</div>';
   $('outliner').querySelectorAll('[data-body]').forEach(el => el.onclick = e => {
     const n = el.dataset.body;
@@ -1481,7 +1481,7 @@ function renderInspector() {
   const key = JSON.stringify([S.form, f?.id, f?.params, f?.error, bodies, s.faces.length, s.edges.length, S.version, u]);
   if (body.contains(document.activeElement) && key === S.inspKey) return;
   S.inspKey = key;
-  const sec = (id, title, ic, html, extra = '') => `<div class="isec" id="${id}"><h5>${icon(ic)} ${esc(title)}${extra}</h5>${html}</div>`;
+  const sec = (id, title, ic, html, extra = '') => `<div class="isec" id="${id}"><h5 data-tip="${esc(title)}" aria-label="${esc(title)}">${icon(ic)}${extra}</h5>${html}</div>`;
   const rows = list => list.filter(Boolean).map(([k, v]) => `<div class="irow"><span>${esc(k)}</span><span>${v}</span></div>`).join('');
   let h = '', title, sub = '', ic;
   if (S.form) {
@@ -1512,15 +1512,13 @@ function renderInspector() {
     ic = 'doc'; title = S.docName && S.docName !== 'nerikone' ? S.docName : '名称未設定'; sub = 'ドキュメント';
     const all = Object.values(S.doc.bodies);
     h += `<div class="isec"><div class="irow"><span>単位</span><select id="i_units">${['mm', 'cm', 'm', 'in'].map(k => `<option ${k === u ? 'selected' : ''}>${k}</option>`).join('')}</select></div></div>`;
-    const lb = (id, ic2, label, extra = '') => `<button data-act="${id}" ${extra}>${icon(ic2)} ${esc(label)}</button>`;
-    h += sec('i_view', '作業', 'workplane', rows([['作業平面', S.workPlane ? `原点 ${arr(S.workPlane.o).map(fmtN).join(', ')}` : '地面 (Z = 0)'], ['断面表示', S.section ? `${S.section.axis} = ${fmtN(S.section.pos)}` : 'オフ']]) +
-      `<div class="ibtns">${lb('plane.set', 'workplane', '作業平面')}${lb('view.section', 'section', '断面', S.section ? 'class="on"' : '')}${all.length > 1 ? lb('measure.info', 'measure', '干渉チェック') : ''}</div><div id="i_measure"></div>`);
+    const ib = (id, ic2, tip, on = false) => `<button data-act="${id}" class="ib ${on ? 'on' : ''}" data-tip="${esc(tip)}" aria-label="${esc(tip)}">${icon(ic2)}</button>`;
     const opt = (id, list, cur, unit = '') => `<select id="${id}">${list.map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}${unit}</option>`).join('')}</select>`;
-    const sn = S.snap, ck = (id, on) => `<input type="checkbox" id="${id}" ${on ? 'checked' : ''}>`;
-    h += sec('i_snap', 'スナップ', 'magnet', `<div class="irow"><span>スナップ</span>${ck('i_snap_on', sn.on)}</div>
-      <div class="irow"><span>グリッドに合わせる</span>${ck('i_snap_grid', sn.grid)}</div><div class="irow"><span>グリッド間隔</span>${opt('i_snap_step', SNAP_STEPS, sn.step, ' ' + u)}</div>
-      <div class="irow"><span>刻みで動かす</span>${ck('i_snap_inc', sn.inc)}</div><div class="irow"><span>長さの刻み</span>${opt('i_snap_len', SNAP_LENS, sn.len, ' ' + u)}</div>
-      <div class="irow"><span>角度の刻み</span>${opt('i_snap_angle', SNAP_ANGLES, sn.angle, '°')}</div>`);
+    const sn = S.snap, tg = (id, ic2, tip, on) => `<label class="itog" data-tip="${esc(tip)}" aria-label="${esc(tip)}"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}>${icon(ic2)}</label>`;
+    const sl = (ic2, tip, sel) => `<label class="isel" data-tip="${esc(tip)}" aria-label="${esc(tip)}">${icon(ic2)}${sel}</label>`;
+    // state as icons: what is on is lit, the name is the tooltip
+    h += `<div class="isec"><div class="irow icons">${ib('plane.set', 'workplane', S.workPlane ? '作業平面（設定中。クリックで変更）' : '作業平面（今は地面）', !!S.workPlane)}${ib('view.section', 'section', S.section ? `断面表示（${S.section.axis} = ${fmtN(S.section.pos)}）` : '断面表示', !!S.section)}${all.length > 1 ? ib('measure.info', 'measure', '干渉チェック') : ''}<span class="grow"></span>${tg('i_snap_on', 'magnet', 'スナップ', sn.on)}${tg('i_snap_grid', 'pattern', 'グリッドに合わせる', sn.grid)}${tg('i_snap_inc', 'ruler', '刻みで動かす', sn.inc)}</div>
+      <div class="irow icons">${sl('pattern', 'グリッド間隔', opt('i_snap_step', SNAP_STEPS, sn.step, ' ' + u))}${sl('ruler', '長さの刻み', opt('i_snap_len', SNAP_LENS, sn.len, ' ' + u))}${sl('rotate', '角度の刻み', opt('i_snap_angle', SNAP_ANGLES, sn.angle, '°'))}</div><div id="i_measure"></div></div>`;
   }
   if (s.faces.length && !S.form) {
     if (!bodies.length || !f) { ic = 'sel-face'; title = `面 ${s.faces.length}`; sub = s.faces[0].body; }
@@ -1563,6 +1561,45 @@ function defaultsFromSelection(cmd) {
 }
 // Drawings for the parameter forms: an isometric sketch of the shape; each slot is [parameter, left %, top %] of the box that holds its input.
 const dgSvg = body => `<svg viewBox="0 0 240 150" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+// Drawings that follow the numbers: each builder returns {svg, slots} for the values given (slot = [parameter, x, y] in the 240 x 150 drawing).
+// Ratios are clamped for the drawing only (a 1 : 1000 box still shows as a long thin box), the inputs always hold the real numbers.
+const clampR = (v, max) => Math.max(v, max * 0.12);
+function fitIso(pts, w = 200, h = 118) { // scale + centre a list of points into the drawing
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const k = Math.min(w / ((x1 - x0) || 1), h / ((y1 - y0) || 1)), ox = 120 - (x0 + x1) / 2 * k, oy = 78 - (y0 + y1) / 2 * k;
+  return p => [p[0] * k + ox, p[1] * k + oy];
+}
+const pth = (...ps) => ps.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('') + 'z';
+const BUILD = {
+  'body.box'(v) {
+    const m = Math.max(v.length, v.width, v.height) || 1, l = clampR(v.length || 1, m), w = clampR(v.width || 1, m), h = clampR(v.height || 1, m);
+    const P0 = (x, y, z) => [(x - y) * 0.866, (x + y) * 0.5 - z];
+    const all = [[0, 0, 0], [l, 0, 0], [0, w, 0], [l, w, 0], [0, 0, h], [l, 0, h], [0, w, h], [l, w, h]].map(p => P0(...p)), T = fitIso(all), P = (x, y, z) => T(P0(x, y, z));
+    const top = pth(P(0, 0, h), P(l, 0, h), P(l, w, h), P(0, w, h)), left = pth(P(0, w, 0), P(l, w, 0), P(l, w, h), P(0, w, h)), right = pth(P(l, 0, 0), P(l, w, 0), P(l, w, h), P(l, 0, h));
+    const mid = (p, q, dx, dy) => [(p[0] + q[0]) / 2 + dx, (p[1] + q[1]) / 2 + dy];
+    return {svg: dgSvg(`<path class="f1" d="${top}"/><path class="f2" d="${left}"/><path class="f3" d="${right}"/><path d="${top}${left}${right}"/>` +
+      `<path class="dm e-length" d="M${P(0, w, 0).join(' ')}L${P(l, w, 0).join(' ')}"/><path class="dm e-width" d="M${P(l, 0, 0).join(' ')}L${P(l, w, 0).join(' ')}"/><path class="dm e-height" d="M${P(l, w, 0).join(' ')}L${P(l, w, h).join(' ')}"/>`),
+      slots: [['length', ...mid(P(0, w, 0), P(l, w, 0), -14, 22)], ['width', ...mid(P(l, 0, 0), P(l, w, 0), 20, 22)], ['height', ...mid(P(l, w, 0), P(l, w, h), 34, 0)]]};
+  },
+  'body.cylinder'(v) {
+    const m = Math.max(v.radius * 2, v.height) || 1, r = clampR(v.radius || 1, m / 2) * 1, h = clampR(v.height || 1, m), k = Math.min(120 / (2 * r), 100 / (h + r * 0.9));
+    const rx = r * k, ry = rx * 0.4, hh = h * k, cx = 120, top = 78 - hh / 2;
+    return {svg: dgSvg(`<path class="f2" d="M${cx - rx} ${top}v${hh}a${rx} ${ry} 0 0 0 ${2 * rx} 0v${-hh}a${rx} ${ry} 0 0 1 ${-2 * rx} 0z"/><ellipse class="f1" cx="${cx}" cy="${top}" rx="${rx}" ry="${ry}"/><path d="M${cx - rx} ${top}v${hh}a${rx} ${ry} 0 0 0 ${2 * rx} 0v${-hh}"/>` +
+      `<path class="dm e-radius" d="M${cx} ${top}h${rx}"/><path class="dm e-height" d="M${cx + rx + 8} ${top}v${hh}"/>`), slots: [['radius', cx + rx / 2, top - 14], ['height', cx + rx + 34, top + hh / 2]]};
+  },
+  'body.cone'(v) {
+    const R = v.bottom_radius || 1, r = v.top_radius || 0, m = Math.max(R * 2, v.height) || 1, Rr = clampR(R, m / 2), rr = Math.min(r, R) / (R || 1) * Rr, h = clampR(v.height || 1, m), k = Math.min(120 / (2 * Rr), 100 / (h + Rr * 0.9));
+    const rx = Rr * k, tx = rr * k, ry = rx * 0.4, ty = tx * 0.4, hh = h * k, cx = 120, top = 78 - hh / 2, bot = top + hh;
+    return {svg: dgSvg(`<path class="f2" d="M${cx - tx} ${top}L${cx - rx} ${bot}a${rx} ${ry} 0 0 0 ${2 * rx} 0L${cx + tx} ${top}a${tx} ${Math.max(ty, 0.01)} 0 0 1 ${-2 * tx} 0z"/><path d="M${cx - tx} ${top}L${cx - rx} ${bot}a${rx} ${ry} 0 0 0 ${2 * rx} 0L${cx + tx} ${top}"/><ellipse class="f1" cx="${cx}" cy="${top}" rx="${Math.max(tx, 0.5)}" ry="${Math.max(ty, 0.2)}"/>` +
+      `<path class="dm e-bottom_radius" d="M${cx} ${bot}h${rx}"/><path class="dm e-top_radius" d="M${cx} ${top}h${tx}"/><path class="dm e-height" d="M${cx - rx - 10} ${top}v${hh}"/>`),
+      slots: [['bottom_radius', cx + rx / 2, bot + 18], ['top_radius', cx + tx / 2 + 10, top - 14], ['height', cx - rx - 36, top + hh / 2]]};
+  },
+  'body.torus'(v) {
+    const M = v.major_radius || 2, n = Math.min(v.minor_radius || 0.5, M * 0.95), q = Math.max(n / M, 0.08), rx = 92, ry = 46, inner = rx * (1 - q) * 0.9;
+    return {svg: dgSvg(`<ellipse class="f2" cx="120" cy="78" rx="${rx}" ry="${ry}"/><ellipse cx="120" cy="78" rx="${inner}" ry="${inner * 0.5}" fill="var(--bg)"/><path class="dm e-major_radius" d="M120 78h${rx}"/><path class="dm e-minor_radius" d="M${120 + inner} 78h${rx - inner}" transform="translate(0 18)"/>`),
+      slots: [['major_radius', 120 + rx / 2, 56], ['minor_radius', 120 + (inner + rx) / 2, 112]]};
+  },
+};
 const DIAGRAMS = {
   'body.box': {svg: dgSvg('<path d="M120 22 190 58 120 94 50 58z" fill="currentColor" fill-opacity=".12"/><path d="M50 58v52l70 36 70-36V58M120 94v52" /><path class="dm" d="M196 66v52M44 66v52M126 150l64-33M114 150 56 120"/>'), slots: [['length', 74, 80], ['width', 4, 80], ['height', 78, 34]]},
   'body.cylinder': {svg: dgSvg('<ellipse cx="120" cy="38" rx="56" ry="20" fill="currentColor" fill-opacity=".12"/><path d="M64 38v70c0 11 25 20 56 20s56-9 56-20V38"/><path class="dm" d="M120 38h56M184 38v90"/>'), slots: [['radius', 66, 12], ['height', 80, 62]]},
@@ -1593,15 +1630,28 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
   };
   const shown = cmd.params.filter(q => q.type !== 'blob' && !(live && q.name === 'name'));
   // the main dimensions of a shape are typed on a drawing of it, at the edge they measure; the rest stay in the list
-  const dg = DIAGRAMS[cmd.id], onDiagram = new Set(dg ? dg.slots.map(s => s[0]).filter(n => shown.some(q => q.name === n)) : []);
-  const diagram = dg && onDiagram.size ? `<div class="diag">${dg.svg}${dg.slots.filter(s => onDiagram.has(s[0])).map(([n, x, y]) => { const q = shown.find(z => z.name === n);
-    return `<label class="slot scrub" style="left:${x}%;top:${y}%" data-tip="${esc(n)}"><span>${esc(DIM_JA[n] || n)}</span>${inputFor(q)}</label>`; }).join('')}</div>` : '';
+  const dyn = BUILD[cmd.id], numVals = () => Object.fromEntries(cmd.params.filter(q => q.type === 'float' || q.type === 'int').map(q => { const inp = $('p_' + q.name); return [q.name, parseFloat(inp ? inp.value : (values[q.name] ?? q.default))]; }));
+  const dg = dyn ? dyn(Object.fromEntries(cmd.params.filter(q => q.type === 'float' || q.type === 'int').map(q => [q.name, +(values[q.name] ?? q.default)]))) : DIAGRAMS[cmd.id];
+  const onDiagram = new Set(dg ? dg.slots.map(s => s[0]).filter(n => shown.some(q => q.name === n)) : []);
+  const slotPos = (x, y) => dyn ? [Math.min(92, Math.max(8, x / 2.4)), Math.min(94, Math.max(6, y / 1.5))] : [x, y];
+  const diagram = dg && onDiagram.size ? `<div class="diag ${dyn ? 'dyn' : ''}">${dg.svg}${dg.slots.filter(s => onDiagram.has(s[0])).map(([n, x, y]) => { const q = shown.find(z => z.name === n), [px, py] = slotPos(x, y);
+    return `<label class="slot scrub" data-slot="${esc(n)}" style="left:${px}%;top:${py}%" data-tip="${esc(DIM_JA[n] || n)}" aria-label="${esc(DIM_JA[n] || n)}"><span>${esc(DIM_JA[n] || n)}</span>${inputFor(q)}</label>`; }).join('')}</div>` : '';
   el.innerHTML = (feature?.error ? `<div class="err">${icon('warn')} ${esc(friendly(feature.error))}</div>` : '') +
     (diagram || `<h5 data-tip="${esc(cmd.doc)}">${icon('settings')} パラメータ</h5>`) +
     shown.filter(q => simple(q) && !onDiagram.has(q.name)).map(field).join('') +
     (shown.some(q => !simple(q)) ? `<details class="more"><summary>データ</summary>${shown.filter(q => !simple(q)).map(field).join('')}</details>` : '') +
     `<div class="dfoot">${live ? `<button class="txt" id="p_sup">${icon(feature.suppressed ? 'eye' : 'eye-off')} ${feature.suppressed ? '抑制を解除' : '抑制'}</button><button class="txt" id="p_del">${icon('trash')} 削除</button>`
       : `<button class="txt" id="p_cancel">取り消し</button><button class="pri txt" id="p_go">${icon('check')} ${label}</button>`}</div><div id="p_err" class="err"></div>`;
+  if (dyn && el.querySelector('.diag')) { // the drawing follows the numbers; the edge that belongs to the focused box lights up
+    const diag = el.querySelector('.diag');
+    const redraw = () => {
+      const d = dyn(numVals()); diag.querySelector('svg').outerHTML = d.svg;
+      for (const [n, x, y] of d.slots) { const sl = diag.querySelector(`.slot[data-slot="${n}"]`); if (sl) { const [px, py] = slotPos(x, y); sl.style.left = px + '%'; sl.style.top = py + '%'; } }
+    };
+    diag.addEventListener('input', redraw);
+    diag.addEventListener('focusin', e => { const n = e.target.closest('.slot')?.dataset.slot; if (n) diag.dataset.hl = n; });
+    diag.addEventListener('focusout', () => { delete diag.dataset.hl; });
+  }
   const read = () => {
     const out = {};
     for (const q of cmd.params) {
