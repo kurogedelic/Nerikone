@@ -370,3 +370,6 @@ input[type=color]{height:var(--ctl);padding:2px}
 /* box selection */
 #marquee{position:absolute;z-index:6;pointer-events:none;border:1px solid var(--acc);background:#f5a62320;border-radius:2px}
 #marquee.crossing{border-style:dashed;background:#4fc3f720;border-color:var(--acc2)}
+
+/* the build number: the left end of the status bar; it changes whenever the code does, so a stale cached copy is easy to spot */
+#buildid{flex:none;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.04em;text-transform:lowercase}

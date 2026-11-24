@@ -75,9 +75,12 @@ import hashlib
 files = sorted(p.relative_to(OUT).as_posix() for p in OUT.rglob("*") if p.is_file())
 h = hashlib.sha256()
 for f in files:
-    h.update(f.encode())
-    h.update((OUT / f).read_bytes())
-sw = (LOCAL / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", h.hexdigest()[:12]).replace("__FILES__", json.dumps(["./"] + files))
+    if f != "index.html":  # the page carries the build number itself
+        h.update(f.encode())
+        h.update((OUT / f).read_bytes())
+build = h.hexdigest()[:7]
+(OUT / "index.html").write_text((OUT / "index.html").read_text(encoding="utf-8").replace('name="nerikone-build" content="dev"', f'name="nerikone-build" content="{build}"'), encoding="utf-8")
+sw = (LOCAL / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", build).replace("__FILES__", json.dumps(["./"] + files))
 (OUT / "sw.js").write_text(sw, encoding="utf-8")
 size = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file())
-print(f"dist-web: {size / 1e6:.1f} MB, {sum(1 for _ in OUT.rglob('*') if _.is_file())} files")
+print(f"dist-web build {build}: {size / 1e6:.1f} MB, {sum(1 for _ in OUT.rglob('*') if _.is_file())} files")

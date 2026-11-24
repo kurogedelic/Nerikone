@@ -42,6 +42,24 @@ MAX_SESSIONS = 200                   # documents kept in memory
 SESSION_IDLE = 2 * 3600              # seconds before an idle document is dropped
 MAX_BLOBS = 400 * 1024 * 1024        # imported files kept in memory, all sessions together
 
+_BUILD = {"stamp": None, "id": "dev"}
+
+
+def build_id():
+    """A short hex number from the contents of the code (viewer and kernel). It is shown in the status bar; it changes with the code."""
+    files = sorted(p for p in WEB.glob("*") if p.suffix in (".js", ".css", ".html")) + [pathlib.Path(__file__).parent / n for n in ("kernel.py", "server.py", "api.py", "vrml.py", "meshio.py")]
+    stamp = tuple((str(f), f.stat().st_mtime_ns) for f in files if f.exists())
+    if stamp != _BUILD["stamp"]:
+        import hashlib
+        h = hashlib.sha256()
+        for f in files:
+            if f.name != "index.html" and f.exists():
+                h.update(f.name.encode())
+                h.update(f.read_bytes())
+        _BUILD.update(stamp=stamp, id=h.hexdigest()[:7])
+    return _BUILD["id"]
+
+
 LOCK = threading.Lock()  # one kernel operation at a time (the kernel is not known to be thread-safe)
 
 
@@ -199,7 +217,10 @@ class H(BaseHTTPRequestHandler):
         p = (WEB / ("index.html" if path in ("/", "") else path.lstrip("/"))).resolve()
         if not p.is_relative_to(WEB) or not p.is_file():
             return self._json({"error": "not found"}, 404)
-        self._send(200, p.read_bytes(), TYPES.get(p.suffix, "application/octet-stream"),
+        data = p.read_bytes()
+        if p.name == "index.html" and p.parent == WEB:  # the page shows the build number
+            data = data.replace(b'name="nerikone-build" content="dev"', f'name="nerikone-build" content="{build_id()}"'.encode())
+        self._send(200, data, TYPES.get(p.suffix, "application/octet-stream"),
                    {"Cache-Control": "no-cache"})
 
     def do_POST(self):

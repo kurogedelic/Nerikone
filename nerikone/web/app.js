@@ -1561,7 +1561,7 @@ function renderStatus() { // the state only: what tool, what is selected, how ma
     S.section ? '<span class="tool">断面表示</span>' : '', (S.modal ? S.modal.keep || S.modal.copy : S.plus && S.tool === 'pushpull') ? `<span class="tool">+ ${S.modal?.copy || S.tool !== 'pushpull' ? 'コピー' : '面を残す'}</span>` : '', S.workPlane ? '<span class="tool">作業平面</span>' : '',
     `<span>${esc(S.doc?.units || 'mm')}</span>`].filter(Boolean).join('');
   updateAxisChips();
-  $('status').innerHTML = `<button id="consolebtn" data-act="panel.console" data-tip="コンソール" data-key="${esc(KM.shortcutOf('panel.console'))}">${icon('terminal')}<span class="badge">${S.unseenErr || ''}</span></button><div class="hints"></div><div class="sinfo">${info}</div>`;
+  $('status').innerHTML = `<button id="consolebtn" data-act="panel.console" data-tip="コンソール" data-key="${esc(KM.shortcutOf('panel.console'))}">${icon('terminal')}<span class="badge">${S.unseenErr || ''}</span></button><span id="buildid" data-tip="ビルド番号（コードの内容から決まる）">${esc(document.querySelector('meta[name=nerikone-build]')?.content || 'dev')}</span><div class="hints"></div><div class="sinfo">${info}</div>`;
   $('consolebtn').classList.toggle('alert', !!S.unseenErr);
 }
 
