@@ -654,10 +654,13 @@ class Dimension:
     b: tuple
     offset: tuple
     axis: str  # "aligned" or "X" / "Y" / "Z"
-    kind: str = "length"  # "length", "radius" (a = centre, b = a point on the curve) or "diameter" (a, b opposite points on it)
+    kind: str = "length"  # "length", "radius" (a = centre, b = a point on the curve), "diameter" (a, b opposite points on it) or "area" (a = a point on the face)
+    amount: float = 0.0  # the area, for kind "area"
 
     @property
     def value(self):
+        if self.kind == "area":
+            return self.amount
         if self.axis in ("X", "Y", "Z"):
             i = "XYZ".index(self.axis)
             return abs(self.b[i] - self.a[i])
@@ -669,11 +672,14 @@ class Dimension:
          "or Z. `offset` moves the dimension line away from the points (the extension lines run back to them).",
          [P("a", "vec3", [0, 0, 0]), P("b", "vec3", [1, 0, 0]), P("offset", "vec3", [0, -0.5, 0]),
           P("axis", "enum", "aligned", options=["aligned", "X", "Y", "Z"]),
-          P("kind", "enum", "length", "length, or the radius / diameter of a round shape (a, b as described by the kind)",
-            options=["length", "radius", "diameter"])], creates=True)
+          P("kind", "enum", "length", "length, the radius / diameter of a round shape (a, b as described by the kind), or the area of a face (a: a point on it)",
+            options=["length", "radius", "diameter", "area"]),
+          P("amount", "float", 0, "the area, for kind area (square model units)", 0)], creates=True)
 def _dim(B, p):
-    d = Dimension(tuple(p["a"]), tuple(p["b"]), tuple(p["offset"]), p["axis"], p["kind"])
-    if d.value < 1e-9:
+    d = Dimension(tuple(p["a"]), tuple(p["b"]), tuple(p["offset"]), p["axis"], p["kind"], float(p["amount"]))
+    if d.kind == "area" and d.amount <= 0:
+        raise BadParams("an area dimension needs an amount above 0")
+    if d.kind != "area" and d.value < 1e-9:
         raise BadParams("the two points are at the same place" + ("" if p["axis"] == "aligned" else f" along {p['axis']}"))
     B[p["name"]] = d
 
@@ -1177,7 +1183,7 @@ def body_info(b):
         lo = [min(b.a[i], b.b[i], b.a[i] + b.offset[i]) for i in range(3)]
         hi = [max(b.a[i], b.b[i], b.a[i] + b.offset[i]) for i in range(3)]
         return {"kind": "Dimension", "bbox": [lo, hi], "color": None,
-                "dim": {"a": list(b.a), "b": list(b.b), "offset": list(b.offset), "axis": b.axis, "kind": b.kind, "value": round(b.value, 9)}}
+                "dim": {"a": list(b.a), "b": list(b.b), "offset": list(b.offset), "axis": b.axis, "kind": b.kind, "amount": b.amount, "value": round(b.value, 9)}}
     bb = b.bbox()
     d = {"kind": type(b).__name__, "bbox": [list(bb.min), list(bb.max)], "color": hex_color(getattr(b, "color", None))}
     if isinstance(b, (sm.Part, sm.Shell)):
@@ -1285,6 +1291,10 @@ def measure(doc: "Document", kind: str, p: dict) -> dict:
         na, nb = fa.normal_at(), fb.normal_at()
         c = max(-1.0, min(1.0, na.dot(nb) / (na.length * nb.length)))
         return {"angle": round(math.degrees(math.acos(c)), 6), "normal_a": _v(na), "normal_b": _v(nb)}
+    if kind == "face":  # {body, at}: the area of the face nearest `at`, and a point on it
+        b = _body(B, p.get("body", ""), SOLIDS + (sm.Sketch,))
+        f = min(b.faces(), key=lambda x: x.distance_to(tuple(sm.Vector(*p["at"]))))
+        return {"type": "face", "area": round(f.area, 9), "point": _v(_face_point(f)), "planar": bool(f.is_planar)}
     if kind == "round":  # {body, at}: the round shape (sphere, cylinder, circle or arc edge) nearest `at`, for radius / diameter dimensions
         b = _body(B, p.get("body", ""), SOLIDS + (sm.Sketch,))
         at = sm.Vector(*p["at"])
@@ -1310,7 +1320,7 @@ def measure(doc: "Document", kind: str, p: dict) -> dict:
             return {"type": f.geom_type, "radius": round(r, 9), "center": _v(c), "point": _v(c + v.normalized() * r),
                     "axis": None if f.geom_type == "sphere" else _v(d)}
         return {"type": "none"}
-    raise BadParams("kind must be one of: body, distance, interference, draft, angle, round")
+    raise BadParams("kind must be one of: body, distance, interference, draft, angle, round, face")
 
 
 # ---------------------------------------------------------------- tessellation for the viewer

@@ -1093,7 +1093,7 @@ const TOOL_GROUPS = [
     ['edit.mirror', 'mirror', 'ミラー', 'body'], ['edit.pattern', 'pattern', '配列複写', 'body']],
   [['bool.union', 'union', '結合', 'two'], ['bool.cut', 'cut', '切り抜き', 'two'],
     ['bool.intersect', 'intersect', '交差', 'two'], ['edit.split', 'split', '平面で分割', 'body']],
-  [['tool.ruler', 'ruler', 'ルーラー', 'tool', 'ruler'], ['tool.dim', 'dimension', '寸法', 'tool', 'dim'], ['measure.info', 'measure', '計測'],
+  [['tool.dim', 'dimension', '寸法', 'tool', 'dim'],
     ['view.section', 'section', '断面表示', 'toggle', 'section'], ['plane.set', 'workplane', '作業平面', 'toggle', 'workplane'], ['view.frame', 'fit', 'フレーム']],
   [['tool.orbit', 'orbit', 'オービット', 'tool', 'orbit'], ['tool.pan', 'pan', 'パン', 'tool', 'pan'],
     ['tool.zoom', 'zoom', 'ズーム', 'tool', 'zoom'], ['view.iso', 'box', 'アイソメ']],
@@ -1149,7 +1149,7 @@ function contextActions() {
   if (s.bodies.length >= 2) out.push(null, ['bool.union', 'union', '結合'], ['bool.cut', 'cut', '切り抜き'], ['bool.intersect', 'intersect', '交差']);
   if (s.faces.length === 1 && (s.faces[0].normal || S.doc.bodies[s.faces[0].body]?.kind === 'Sketch')) out.push(['sketch.offset', 'offset', 'オフセット']);
   if (s.bodies.length) out.push(null, ['edit.mirror', 'mirror', 'ミラー'], ['edit.pattern', 'pattern', '配列複写'], ['edit.split', 'split', '平面で分割']);
-  if (selBodies().length) out.push(['measure.info', 'measure', '計測']);
+  if (selBodies().length) out.push(['measure.info', 'measure', '解析']);
   if (selBodies().length) out.push(null, ['view.frame', 'fit', 'フレーム'], ['hide.selected', 'eye-off', '隠す']);
   if (s.bodies.length) out.push(['edit.delete', 'trash', '削除']);
   // less common: behind the More button of the bar (all of them stay in the right-click menu)
@@ -1210,7 +1210,7 @@ function contextMenu(e) {
   const h = pick();
   if (h && !(h.kind === 'face' ? isSelFace(h) : h.kind === 'edge' ? S.sel.edges.some(x => x.body === h.body && x.ei === h.ei) : S.sel.bodies.includes(h.body))) select(h, false);
   const ca = contextActions(), items = ca.more?.length ? [...ca, null, ...ca.more] : ca;
-  if (!items.length) items.push(['measure.info', 'measure', '計測（干渉チェック）'], ['plane.set', 'workplane', '作業平面を設定'], ['view.section', 'section', '断面表示'], null, ['add.menu', 'add', '追加'], ['command.palette', 'search', 'コマンド検索'], ['view.frame', 'fit', 'すべてフレーム'], ['hide.unhide', 'eye', 'すべて表示'],
+  if (!items.length) items.push(['measure.info', 'measure', '解析（干渉チェック）'], ['plane.set', 'workplane', '作業平面を設定'], ['view.section', 'section', '断面表示'], null, ['add.menu', 'add', '追加'], ['command.palette', 'search', 'コマンド検索'], ['view.frame', 'fit', 'すべてフレーム'], ['hide.unhide', 'eye', 'すべて表示'],
     ...(S.rulers.length ? [null, ['ruler.clear', 'trash', 'ルーラーをすべて消す']] : []));
   showMenu(e.clientX, e.clientY, items.map(a => a && {icon: a[1], label: a[2], key: KM.shortcutOf(a[0]), dis: a[3], run: () => run(a[0])}));
 }
@@ -1371,7 +1371,7 @@ function renderInspector() {
       info.some(x => x.volume != null) && ['体積', `${fmtN(vol)} ${u}³`],
       info.length === 1 && info[0].faces != null && ['面 / エッジ', `${info[0].faces} / ${info[0].edges}`],
       info.length === 1 && info[0].dim && ['寸法', `${fmtN(info[0].dim.value)} ${u}${info[0].dim.axis !== 'aligned' ? `（${info[0].dim.axis} 方向）` : ''}`],
-    ]) + '<div id="i_measure"></div>', `<button id="i_measure_go">計測</button>`);
+    ]) + '<div id="i_measure"></div>', `<button id="i_measure_go">解析</button>`);
     if (info.some(x => x.kind === 'Part' || x.kind === 'Shell')) {
       const b0 = info[0], fin = b0.finish || 'plastic';
       h += sec('i_mat', '素材と色', 'palette', `<div class="irow"><span>色</span><input type="color" id="i_color" value="${esc((b0.color || b0.mat_color || '#9aa7bd').slice(0, 7))}"></div>
@@ -1751,7 +1751,7 @@ function placeRulerLabels() {
       <b>${d.length().toFixed(3)}</b><span style="color:var(--x)">${d.x.toFixed(2)}</span><span style="color:var(--y)">${d.y.toFixed(2)}</span><span style="color:var(--z)">${d.z.toFixed(2)}</span>${i < S.rulers.length ? `<button data-rdel="${i}" title="この測定を消す">${icon('close')}</button>` : ''}</div>`;
   }).join('');
 }
-A('tool.ruler', 'ルーラー', 'ツール', () => setTool(S.tool === 'ruler' ? null : 'ruler'));
+A('tool.ruler', '寸法（旧ルーラー）', 'ツール', () => setTool(S.tool === 'dim' ? null : 'dim')); // the ruler became the dimension tool
 function deleteRuler(i) { S.rulers.splice(i, 1); drawRulers(); renderCtx(); }
 A('ruler.clear', 'ルーラーをすべて消す', 'ツール', () => { S.rulers = []; S.rulerA = null; rulerPreview(null); drawRulers(); renderCtx(); });
 // labels are rebuilt every frame, so act on pointerdown (the element is still the one under the pointer)
@@ -2212,6 +2212,11 @@ const dimMat = new T.LineBasicMaterial({color: 0xe6e8ec, depthTest: false, trans
 const dimLiveMat = new T.LineBasicMaterial({color: 0x4fc3f7, depthTest: false});
 const dimLabels = Object.assign(document.createElement('div'), {id: 'dimlabels'}); view.append(dimLabels);
 function dimGeom(d) {
+  if (d.kind === 'area') { // a leader from a point on the face to the label, with a small cross where it starts
+    const p = V(d.a), q = p.clone().add(V(d.offset)), k = Math.max(q.distanceTo(p) * 0.05, 1e-3);
+    return {segs: [p, q, p.clone().add(new T.Vector3(k, 0, 0)), p.clone().sub(new T.Vector3(k, 0, 0)), p.clone().add(new T.Vector3(0, k, 0)), p.clone().sub(new T.Vector3(0, k, 0))],
+            mid: q, value: d.amount ?? d.value ?? 0};
+  }
   const a = V(d.a), b = V(d.b), off = V(d.offset);
   let dir, t;
   if (AX[d.axis]) { dir = AX[d.axis].clone(); t = b.clone().sub(a).dot(dir); } else { dir = b.clone().sub(a); t = dir.length(); dir.normalize(); }
@@ -2222,21 +2227,48 @@ function dimGeom(d) {
   for (const D of [D1, D2]) segs.push(D.clone().sub(u), D.clone().add(u));
   return {segs, mid: D1.clone().add(D2).multiplyScalar(0.5), value: len};
 }
+// The dimension texts as real objects of the scene (a textured sprite each), so rendered images and screenshots carry them.
+const dimText = d => { const u = S.doc.units || 'mm', p = d.kind === 'radius' ? 'R ' : d.kind === 'diameter' ? 'Ø ' : d.kind === 'area' ? '面積 ' : AX[d.axis] ? d.axis + ' ' : '';
+  return `${p}${fmtN(d.value)} ${u}${d.kind === 'area' ? '²' : ''}`; };
+const spriteCache = new Map();
+function dimSprite(text) {
+  let hit = spriteCache.get(text);
+  if (!hit) {
+    const c = document.createElement('canvas'), g = c.getContext('2d'), fs = 56;
+    g.font = `700 ${fs}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif`;
+    const w = Math.ceil(g.measureText(text).width) + 44; c.width = w; c.height = fs + 36;
+    g.font = `700 ${fs}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif`;
+    g.fillStyle = 'rgba(13,14,16,.88)'; g.beginPath(); g.roundRect(0, 0, c.width, c.height, 18); g.fill();
+    g.strokeStyle = 'rgba(230,232,236,.55)'; g.lineWidth = 3; g.stroke();
+    g.fillStyle = '#f1f3f6'; g.textBaseline = 'middle'; g.fillText(text, 22, c.height / 2 + 2);
+    const tex = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace;
+    hit = {tex, aspect: c.width / c.height}; spriteCache.set(text, hit);
+  }
+  const m = new T.SpriteMaterial({map: hit.tex, depthTest: false, transparent: true, toneMapped: false});
+  const sp = new T.Sprite(m); sp.userData.aspect = hit.aspect; return sp;
+}
+function sizeDimSprites() { // a constant size on screen
+  for (const s of dimGroup.children) if (s.isSprite && s.visible) {
+    const h = (cam === ortho ? (ortho.top - ortho.bottom) / ortho.zoom : 2 * Math.tan(T.MathUtils.degToRad(cam.fov / 2)) * cam.position.distanceTo(s.position)) * 0.032;
+    s.scale.set(h * s.userData.aspect, h, 1);
+  }
+}
 function drawDims() {
   dimGroup.clear();
   const add = (d, live) => { const g = dimGeom(d); const l = new T.LineSegments(new T.BufferGeometry().setFromPoints(g.segs), live ? dimLiveMat : dimMat);
-    l.renderOrder = 13; l.userData = {mid: g.mid, value: g.value, name: d.name, axis: d.axis, kind: d.kind || 'length', live}; dimGroup.add(l); };
+    l.renderOrder = 13; l.userData = {mid: g.mid, value: g.value, name: d.name, axis: d.axis, kind: d.kind || 'length', live}; dimGroup.add(l);
+    const sp = dimSprite(dimText(l.userData)); sp.position.copy(g.mid); sp.visible = S.render && !live; sp.renderOrder = 14; sp.userData.label = true; dimGroup.add(sp); };
   for (const [n, b] of Object.entries(S.doc.bodies)) if (b.kind === 'Dimension' && !S.hidden.has(n)) add({...b.dim, name: n});
   if (S.dimLive) add(S.dimLive, true);
   placeDimLabels();
 }
 function placeDimLabels() {
-  const list = dimGroup.children;
-  if (!list.length) { if (dimLabels.innerHTML) dimLabels.innerHTML = ''; return; }
+  const list = dimGroup.children.filter(c => c.isLineSegments);
+  if (!list.length || S.render) { if (dimLabels.innerHTML) dimLabels.innerHTML = ''; S.dimHtml = ''; return; } // in the render view the labels are the 3D ones
   const vr = view.getBoundingClientRect(), u = S.doc.units || 'mm';
   const html = list.map(l => { const m = screenOf(l.userData.mid), ax = AX[l.userData.axis] ? l.userData.axis : '';
     return `<div class="dlabel ${l.userData.live ? 'live' : ''}" style="left:${(m.x - vr.left).toFixed(1)}px;top:${(m.y - vr.top).toFixed(1)}px">` +
-      (ax ? `<i style="color:var(--${ax.toLowerCase()})">${ax}</i>` : l.userData.kind === 'radius' ? '<i>R</i>' : l.userData.kind === 'diameter' ? '<i>Ø</i>' : '') + `<b>${fmtN(l.userData.value)}</b><span>${u}</span>` +
+      (ax ? `<i style="color:var(--${ax.toLowerCase()})">${ax}</i>` : l.userData.kind === 'radius' ? '<i>R</i>' : l.userData.kind === 'diameter' ? '<i>Ø</i>' : l.userData.kind === 'area' ? '<i>面積</i>' : '') + `<b>${fmtN(l.userData.value)}</b><span>${u}${l.userData.kind === 'area' ? '²' : ''}</span>` +
       (l.userData.live ? '' : `<button data-ddel="${esc(l.userData.name)}" title="この寸法を消す">${icon('close')}</button>`) + '</div>'; }).join('');
   if (html !== S.dimHtml) { dimLabels.innerHTML = html; S.dimHtml = html; }
 }
@@ -2244,6 +2276,7 @@ dimLabels.addEventListener('click', e => { const b = e.target.closest('[data-dde
 function dimDir(a, b) { return AX[S.dimAxis] ? AX[S.dimAxis].clone() : b.clone().sub(a).normalize(); }
 function dimOffset(e) { // where the dimension line goes: the pointer, on the plane through the points that faces the view best
   setRay(e);
+  if (S.dimKind === 'area' && S.dimA) { const pl = new T.Plane().setFromNormalAndCoplanarPoint(cam.getWorldDirection(new T.Vector3()).negate(), S.dimA), h = ray.ray.intersectPlane(pl, new T.Vector3()); return h ? h.sub(S.dimA) : new T.Vector3(0, 0, 0.01); }
   const a = S.dimA, dir = dimDir(a, S.dimB), view_ = cam.getWorldDirection(new T.Vector3());
   let n = view_.clone().addScaledVector(dir, -view_.dot(dir)); if (n.lengthSq() < 1e-9) n = new T.Vector3(0, 0, 1);
   // a dimension along a world axis is pulled out along one of the other two axes: the one the pointer moves along on
@@ -2280,7 +2313,7 @@ function dimOffset(e) { // where the dimension line goes: the pointer, on the pl
 }
 function dimRefresh(e) {
   const ev = e || (S.mouse && {clientX: S.mouse.x, clientY: S.mouse.y, shiftKey: false});
-  if (S.dimA && S.dimB && ev) S.dimLive = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(ev)), axis: S.dimKind && S.dimKind !== 'length' ? 'aligned' : S.dimAxis || 'aligned', kind: S.dimKind || 'length'};
+  if (S.dimA && S.dimB && ev) S.dimLive = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(ev)), axis: S.dimKind && S.dimKind !== 'length' ? 'aligned' : S.dimAxis || 'aligned', kind: S.dimKind || 'length', amount: S.dimArea || 0};
   else if (S.dimA && ev) { const sp = snapPoint(ev); S.dimLive = sp && sp.p.distanceTo(S.dimA) > 1e-9 ? {a: arr(S.dimA), b: arr(sp.p), offset: [0, 0, 0], axis: S.dimAxis || 'aligned'} : null; }
   else S.dimLive = null;
   drawDims(); renderCtx(); renderStatus();
@@ -2293,14 +2326,14 @@ function dimTarget(e, sp) {
   const eh = firstHit(visibleEdges());
   if (eh) return {kind: 'edge', obj: eh.object, body: eh.object.userData.body, ei: eh.object.userData.ei, hit: eh.point.clone()};
   const fh = faceHit(); const u = fh?.object.userData;
-  if (fh && u && !u.planar && !u.mesh && !u.region) return {kind: 'face', body: u.body, hit: fh.point.clone()};
+  if (fh && u && !u.mesh && !u.region) return {kind: 'face', body: u.body, fi: u.fi, planar: !!u.planar, hit: fh.point.clone()};
   return null;
 }
 function dimHover(e) {
   if (!S.dimA) {
     const sp = snapPoint(e), t = dimTarget(e, sp);
     S.dimAuto = t;
-    const h = t?.kind === 'edge' ? {kind: 'edge', body: t.body, ei: t.ei} : null, key = h ? 'e' + t.body + t.ei : '';
+    const h = t?.kind === 'edge' ? {kind: 'edge', body: t.body, ei: t.ei} : t?.kind === 'face' && t.planar ? {kind: 'face', body: t.body, fi: t.fi} : null, key = h ? h.kind[0] + t.body + (t.ei ?? t.fi) : '';
     if (key !== (S.hoverKey || '')) { S.hover = h; S.hoverKey = key; refresh(); }
     applyToolCursor(t ? 'hot' : sp?.snap ? 'snap' : sp ? 'hot' : 'idle');
   } else if (!S.dimB) { const sp = snapPoint(e); applyToolCursor(sp?.snap ? 'snap' : sp ? 'hot' : 'idle'); }
@@ -2310,6 +2343,11 @@ function dimHover(e) {
 async function dimFromTarget(t) {
   let m = {type: 'none'};
   try { m = await post('api/measure', {kind: 'round', params: {body: t.body, at: arr(t.hit)}}); } catch { /* not round: measure the edge itself */ }
+  if (t.kind === 'face' && t.planar && (!m.type || m.type === 'none')) { // a flat face: its area, written on a leader from a point of the face
+    let f = {type: 'none'};
+    try { f = await post('api/measure', {kind: 'face', params: {body: t.body, at: arr(t.hit)}}); } catch { /* not measurable */ }
+    if (f.type === 'face') { S.dimA = t.hit.clone(); S.dimB = t.hit.clone(); S.dimKind = 'area'; S.dimArea = f.area; return true; }
+  }
   if (m.type !== 'none' && m.type) {
     // draw the radius / diameter across the view (perpendicular to the axis and to the line of sight) so it is seen at full length
     const c = V(m.center), r = m.radius, look = cam.getWorldDirection(new T.Vector3());
@@ -2339,8 +2377,8 @@ function dimClick(e) {
   else if (!S.dimB) { const sp = snapPoint(e); if (sp && sp.p.distanceTo(S.dimA) > 1e-9) S.dimB = sp.p.clone(); }
   else {
     const kind = S.dimKind || 'length';
-    const params = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(e)), axis: kind !== 'length' ? 'aligned' : S.dimAxis || 'aligned', kind};
-    S.dimA = S.dimB = null; S.dimKind = 'length'; S.dimLive = null; showSnap(null);
+    const params = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(e)), axis: kind !== 'length' ? 'aligned' : S.dimAxis || 'aligned', kind, amount: kind === 'area' ? S.dimArea : 0};
+    S.dimA = S.dimB = null; S.dimKind = 'length'; S.dimArea = 0; S.dimLive = null; showSnap(null);
     commit('dim.add', params).then(() => { drawDims(); renderStatus(); });
     return;
   }
@@ -2348,7 +2386,7 @@ function dimClick(e) {
 }
 function dimKey(e) {
   if (['KeyX', 'KeyY', 'KeyZ'].includes(e.code) && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); const a = e.code.slice(3); S.dimAxis = S.dimAxis === a ? null : a; dimRefresh(); return true; }
-  if (e.key === 'Escape') { e.preventDefault(); if (S.dimB) S.dimB = null; else if (S.dimA) { S.dimA = null; S.dimKind = 'length'; } else { setTool(null); return true; } dimRefresh(); return true; }
+  if (e.key === 'Escape') { e.preventDefault(); if (S.dimB) S.dimB = null; else if (S.dimA) { S.dimA = null; S.dimKind = 'length'; S.dimArea = 0; } else { setTool(null); return true; } dimRefresh(); return true; }
   return false;
 }
 A('tool.dim', '寸法', 'ツール', () => setTool(S.tool === 'dim' ? null : 'dim'));
@@ -2457,7 +2495,7 @@ function setRender(on) {
       const sc = sun.shadow.camera; sc.left = sc.bottom = -r; sc.right = sc.top = r; sc.far = r * 6; sc.updateProjectionMatrix();
     }
   }
-  refresh(); showHandles(); renderTop();
+  refresh(); showHandles(); renderTop(); drawDims();
 }
 
 // follow changes made elsewhere (e.g. an AI agent over MCP)
@@ -2502,9 +2540,9 @@ async function measureInto(el) {
       rows.push(row('抜き勾配（Z、1° 以上）', ''), row('抜ける / 不足', `${dr.counts.positive} / ${dr.counts.insufficient}`), row('垂直 / アンダーカット', `${dr.counts.vertical} / ${dr.counts.undercut}`));
     }
     el.innerHTML = rows.join('');
-  } catch (err) { el.innerHTML = ''; reportError(err.message, '計測'); }
+  } catch (err) { el.innerHTML = ''; reportError(err.message, '解析'); }
 }
-A('measure.info', '計測', 'ツール', () => {
+A('measure.info', '解析', 'ツール', () => {
   showTab('insp'); renderInspector();
   measureInto($('i_measure'));
 });
@@ -2588,7 +2626,7 @@ resize(); renderTools(); applyShading();
 await load();
 registerWebMCP();
 if (S.public) setTimeout(() => toast('公開版: 使わないとモデルは消えます'), 1200);
-const tick = () => { orbit.update(); drawNavGizmo(); updateViewLabel(); placeRulerLabels(); placeDimLabels(); R.render(scene, cam); };
+const tick = () => { orbit.update(); drawNavGizmo(); updateViewLabel(); placeRulerLabels(); placeDimLabels(); sizeDimSprites(); R.render(scene, cam); };
 R.setAnimationLoop(tick);
 window.nerikone = {S, get cam() { return cam; }, orbit, handles, setMode, setRender, setView, frame, run, tick, registerWebMCP}; // debugging / UI tests
 

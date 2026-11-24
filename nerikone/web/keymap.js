@@ -7,7 +7,7 @@
 
 export const DEFAULT_KEYMAP = {
   'mode.edge': ['2'], 'mode.face': ['3'], 'mode.body': ['4'],
-  'add.menu': ['A', 'Shift+A'], 'tool.ruler': ['M'], 'tool.dim': ['D'], 'tool.pushpull': ['P'], 'tool.orbit': ['O'], 'sketch.line': ['L'], 'sketch.rect': ['Alt+R'], 'sketch.circle': ['Alt+C'], 'sketch.poly': ['Alt+P'], 'select.all': ['Mod+A'], 'select.none': ['Alt+A', 'Escape'],
+  'add.menu': ['A', 'Shift+A'], 'tool.ruler': [], 'tool.dim': ['D', 'M'], 'tool.pushpull': ['P'], 'tool.orbit': ['O'], 'sketch.line': ['L'], 'sketch.rect': ['Alt+R'], 'sketch.circle': ['Alt+C'], 'sketch.poly': ['Alt+P'], 'select.all': ['Mod+A'], 'select.none': ['Alt+A', 'Escape'],
   'transform.grab': ['G'], 'transform.rotate': ['R'], 'transform.scale': ['S'],
   'edit.extrude': ['E'], 'edit.fillet': ['Mod+B', 'F'], 'edit.chamfer': ['Shift+Mod+B'], 'edit.shell': ['Shift+S'],
   'edit.duplicate': ['Shift+D'], 'edit.delete': ['X', 'Delete', 'Backspace'],
