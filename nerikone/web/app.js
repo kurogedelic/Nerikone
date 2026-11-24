@@ -1296,7 +1296,7 @@ addEventListener('drop', e => {
 
 function renderPanels() {
   renderTop();
-  const kindIcon = {Part: 'part', Shell: 'shell_body', Mesh: 'mesh', Dimension: 'dimension', Sketch: 'rectangle'};
+  const kindIcon = {Part: 'part', Shell: 'shell_body', Mesh: 'mesh', Dimension: 'dimension', Sketch: 'rectangle', Wire: 'pencil'};
   $('outliner').innerHTML = Object.entries(S.doc.bodies).map(([n, b]) =>
     `<div class="orow ${S.sel.bodies.includes(n) ? 'sel' : ''} ${S.hidden.has(n) ? 'hidden' : ''}" data-body="${esc(n)}" title="${esc(b.kind)}">
       ${icon(kindIcon[b.kind] || 'part')}<span class="name">${esc(n)}</span><button class="swatch" data-mat="${esc(n)}" data-tip="素材と色" style="--c:${esc(b.color || b.mat_color || '#9aa7bd')}"></button><span class="vol">${b.volume != null ? b.volume.toFixed(2) : ''}</span>
@@ -1994,8 +1994,10 @@ function sketchClick(e) {
   const lc = S.sk.lastClick, now = performance.now();
   S.sk.lastClick = {t: now, x: e.clientX, y: e.clientY};
   if (S.tool === 'line' && !S.sk.arcEnd && lc && now - lc.t < 400 && Math.hypot(lc.x - e.clientX, lc.y - e.clientY) < 6) {
-    if (S.sk.pts.length >= (S.sk.bulges?.some(Boolean) ? 2 : 3)) { shapePoints(null); return finishSketch(); }
-    toast('3 点以上必要'); return;
+    // a double-click ends the line where it is: an open line (2 points are enough); joining the start closes it into a face
+    if (!S.sk.bulges?.some(Boolean) && S.sk.pts.length >= 2) { shapePoints(null); return finishSketch(true); }
+    if (S.sk.pts.length >= 2) { shapePoints(null); return finishSketch(); }
+    toast('2 点以上必要'); return;
   }
   if (S.sk.arcEnd) { // third click of an arc: the bend
     const k = S.sk, q = onPlane(e, k.plane); if (!q) return;
@@ -2042,21 +2044,23 @@ function sketchKey(e) {
       if (S.skCur && S.skCur.distanceTo(k.pts.at(-1)) > 1e-6) k.pts.push(S.skCur.clone());
       k.typed = ''; k.lock = null; reaim(); renderStatus(); return true;
     }
-    if (isPath(S.tool) ? k.pts.length >= (k.bulges?.some(Boolean) ? 2 : 3) : (k.typed || S.skCur)) { shapePoints(S.skCur); finishSketch(); }
-    else if (isPath(S.tool)) toast('3 点以上必要');
+    if (S.tool === 'line' && k.pts.length >= 2 && !k.bulges?.some(Boolean)) { shapePoints(S.skCur); finishSketch(true); } // Enter ends an open line
+    else if (isPath(S.tool) ? k.pts.length >= (k.bulges?.some(Boolean) ? 2 : 3) : (k.typed || S.skCur)) { shapePoints(S.skCur); finishSketch(); }
+    else if (isPath(S.tool)) toast('2 点以上必要');
     return true;
   }
   if (e.key === 'Backspace') { e.preventDefault(); if (k.typed) k.typed = k.typed.slice(0, -1); else if (k.arcEnd) k.arcEnd = null; else if (isPath(S.tool) && k.pts.length > 1) { k.pts.pop(); if (k.bulges) k.bulges.length = Math.min(k.bulges.length, k.pts.length - 1); } reaim(); renderStatus(); return true; }
   if (/^[0-9.,\- ]$/.test(e.key) && S.tool !== 'poly' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); k.typed += e.key; reaim(); return true; }
   return false;
 }
-async function finishSketch() {
+async function finishSketch(open = false) {
   const k = S.sk; if (!k) return;
   const pl = k.plane, base = {origin: arr(pl.o), normal: arr(pl.n), xdir: arr(pl.u), on_body: pl.on_body};
   let cmd, params;
   if (S.tool === 'rect') { if (!k.rect || k.rect.width < 1e-4 || k.rect.height < 1e-4) return; cmd = 'sketch.rect'; params = {...base, ...k.rect}; }
   else if (S.tool === 'circle') { if (!k.circle || k.circle.radius < 1e-4) return; cmd = 'sketch.circle'; params = {...base, ...k.circle}; }
   else if (k.bulges?.some(Boolean)) { if (k.pts.length < 2) return; cmd = 'sketch.path'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5))), bulges: k.pts.map((_, i) => k.bulges[i] || 0)}; }
+  else if (open && S.tool === 'line') { if (k.pts.length < 2) return; cmd = 'sketch.line'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5)))}; }
   else { if (k.pts.length < 3) return; cmd = 'sketch.polygon'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5)))}; }
   for (const key of ['x', 'y', 'width', 'height', 'radius']) if (key in params) params[key] = +params[key].toFixed(5);
   S.sk = null; sketchPreview(); hud('');
@@ -2221,7 +2225,7 @@ function dimGeom(d) {
 function drawDims() {
   dimGroup.clear();
   const add = (d, live) => { const g = dimGeom(d); const l = new T.LineSegments(new T.BufferGeometry().setFromPoints(g.segs), live ? dimLiveMat : dimMat);
-    l.renderOrder = 13; l.userData = {mid: g.mid, value: g.value, name: d.name, axis: d.axis, live}; dimGroup.add(l); };
+    l.renderOrder = 13; l.userData = {mid: g.mid, value: g.value, name: d.name, axis: d.axis, kind: d.kind || 'length', live}; dimGroup.add(l); };
   for (const [n, b] of Object.entries(S.doc.bodies)) if (b.kind === 'Dimension' && !S.hidden.has(n)) add({...b.dim, name: n});
   if (S.dimLive) add(S.dimLive, true);
   placeDimLabels();
@@ -2232,7 +2236,7 @@ function placeDimLabels() {
   const vr = view.getBoundingClientRect(), u = S.doc.units || 'mm';
   const html = list.map(l => { const m = screenOf(l.userData.mid), ax = AX[l.userData.axis] ? l.userData.axis : '';
     return `<div class="dlabel ${l.userData.live ? 'live' : ''}" style="left:${(m.x - vr.left).toFixed(1)}px;top:${(m.y - vr.top).toFixed(1)}px">` +
-      (ax ? `<i style="color:var(--${ax.toLowerCase()})">${ax}</i>` : '') + `<b>${fmtN(l.userData.value)}</b><span>${u}</span>` +
+      (ax ? `<i style="color:var(--${ax.toLowerCase()})">${ax}</i>` : l.userData.kind === 'radius' ? '<i>R</i>' : l.userData.kind === 'diameter' ? '<i>Ø</i>' : '') + `<b>${fmtN(l.userData.value)}</b><span>${u}</span>` +
       (l.userData.live ? '' : `<button data-ddel="${esc(l.userData.name)}" title="この寸法を消す">${icon('close')}</button>`) + '</div>'; }).join('');
   if (html !== S.dimHtml) { dimLabels.innerHTML = html; S.dimHtml = html; }
 }
@@ -2276,22 +2280,67 @@ function dimOffset(e) { // where the dimension line goes: the pointer, on the pl
 }
 function dimRefresh(e) {
   const ev = e || (S.mouse && {clientX: S.mouse.x, clientY: S.mouse.y, shiftKey: false});
-  if (S.dimA && S.dimB && ev) S.dimLive = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(ev)), axis: S.dimAxis || 'aligned'};
+  if (S.dimA && S.dimB && ev) S.dimLive = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(ev)), axis: S.dimKind && S.dimKind !== 'length' ? 'aligned' : S.dimAxis || 'aligned', kind: S.dimKind || 'length'};
   else if (S.dimA && ev) { const sp = snapPoint(ev); S.dimLive = sp && sp.p.distanceTo(S.dimA) > 1e-9 ? {a: arr(S.dimA), b: arr(sp.p), offset: [0, 0, 0], axis: S.dimAxis || 'aligned'} : null; }
   else S.dimLive = null;
   drawDims(); renderCtx(); renderStatus();
 }
+// What a click measures by itself: an edge (its length; a round edge gives its radius or diameter) or a sphere / cylinder face
+// (radius / diameter). Near an end point or a mid point the click measures that point instead, as before.
+function dimTarget(e, sp) {
+  if (sp?.snap && (sp.kind === 'end' || sp.kind === 'mid')) return null;
+  setRay(e);
+  const eh = firstHit(visibleEdges());
+  if (eh) return {kind: 'edge', obj: eh.object, body: eh.object.userData.body, ei: eh.object.userData.ei, hit: eh.point.clone()};
+  const fh = faceHit(); const u = fh?.object.userData;
+  if (fh && u && !u.planar && !u.mesh && !u.region) return {kind: 'face', body: u.body, hit: fh.point.clone()};
+  return null;
+}
 function dimHover(e) {
-  if (!S.dimB) { const sp = snapPoint(e); applyToolCursor(sp?.snap ? 'snap' : sp ? 'hot' : 'idle'); }
+  if (!S.dimA) {
+    const sp = snapPoint(e), t = dimTarget(e, sp);
+    S.dimAuto = t;
+    const h = t?.kind === 'edge' ? {kind: 'edge', body: t.body, ei: t.ei} : null, key = h ? 'e' + t.body + t.ei : '';
+    if (key !== (S.hoverKey || '')) { S.hover = h; S.hoverKey = key; refresh(); }
+    applyToolCursor(t ? 'hot' : sp?.snap ? 'snap' : sp ? 'hot' : 'idle');
+  } else if (!S.dimB) { const sp = snapPoint(e); applyToolCursor(sp?.snap ? 'snap' : sp ? 'hot' : 'idle'); }
   dimRefresh(e);
 }
+// Turn the target into the two points of a dimension: a straight edge's ends, a round shape's radius (R) or diameter (Ø)
+async function dimFromTarget(t) {
+  let m = {type: 'none'};
+  try { m = await post('api/measure', {kind: 'round', params: {body: t.body, at: arr(t.hit)}}); } catch { /* not round: measure the edge itself */ }
+  if (m.type !== 'none' && m.type) {
+    // draw the radius / diameter across the view (perpendicular to the axis and to the line of sight) so it is seen at full length
+    const c = V(m.center), r = m.radius, look = cam.getWorldDirection(new T.Vector3());
+    let w = m.axis ? V(m.axis).cross(look) : new T.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
+    w = w.lengthSq() > 1e-8 ? w.normalize() : V(m.point).sub(c).normalize();
+    const p = c.clone().addScaledVector(w, r);
+    if (m.type === 'sphere' || m.type === 'arc' || m.type === 'cone') { S.dimA = c; S.dimB = p; S.dimKind = 'radius'; }
+    else { S.dimA = p; S.dimB = c.clone().addScaledVector(w, -r); S.dimKind = 'diameter'; }
+    return true;
+  }
+  if (t.kind === 'edge') {
+    const pos = t.obj.geometry.attributes.position, last = pos.count - 1;
+    const p0 = new T.Vector3().fromBufferAttribute(pos, 0), p1 = new T.Vector3().fromBufferAttribute(pos, last);
+    if (p0.distanceTo(p1) < 1e-9) return false;
+    S.dimA = p0; S.dimB = p1; S.dimKind = 'length'; return true;
+  }
+  return false;
+}
 function dimClick(e) {
+  if (S.dimBusy) return; // a target is being measured: wait for it
   sfx('point');
-  if (!S.dimA) { const sp = snapPoint(e); if (sp) S.dimA = sp.p.clone(); }
+  if (!S.dimA) {
+    const sp = snapPoint(e), t = dimTarget(e, sp);
+    if (t) { S.dimBusy = true; dimFromTarget(t).then(ok => { if (ok) { S.hover = null; S.hoverKey = ''; refresh(); dimRefresh(); } }).finally(() => { S.dimBusy = false; }); return; }
+    if (sp) { S.dimA = sp.p.clone(); S.dimKind = 'length'; }
+  }
   else if (!S.dimB) { const sp = snapPoint(e); if (sp && sp.p.distanceTo(S.dimA) > 1e-9) S.dimB = sp.p.clone(); }
   else {
-    const params = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(e)), axis: S.dimAxis || 'aligned'};
-    S.dimA = S.dimB = null; S.dimLive = null; showSnap(null);
+    const kind = S.dimKind || 'length';
+    const params = {a: arr(S.dimA), b: arr(S.dimB), offset: arr(dimOffset(e)), axis: kind !== 'length' ? 'aligned' : S.dimAxis || 'aligned', kind};
+    S.dimA = S.dimB = null; S.dimKind = 'length'; S.dimLive = null; showSnap(null);
     commit('dim.add', params).then(() => { drawDims(); renderStatus(); });
     return;
   }
@@ -2299,7 +2348,7 @@ function dimClick(e) {
 }
 function dimKey(e) {
   if (['KeyX', 'KeyY', 'KeyZ'].includes(e.code) && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); const a = e.code.slice(3); S.dimAxis = S.dimAxis === a ? null : a; dimRefresh(); return true; }
-  if (e.key === 'Escape') { e.preventDefault(); if (S.dimB) S.dimB = null; else if (S.dimA) S.dimA = null; else { setTool(null); return true; } dimRefresh(); return true; }
+  if (e.key === 'Escape') { e.preventDefault(); if (S.dimB) S.dimB = null; else if (S.dimA) { S.dimA = null; S.dimKind = 'length'; } else { setTool(null); return true; } dimRefresh(); return true; }
   return false;
 }
 A('tool.dim', '寸法', 'ツール', () => setTool(S.tool === 'dim' ? null : 'dim'));
@@ -2347,7 +2396,7 @@ rapply();
 const TOOL_JA = {'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
   'sketch.extrude': '多角形を押し出し', 'nurbs.surface': 'NURBS 曲面', 'nurbs.loft': 'ロフト', 'nurbs.revolve': '回転体', 'nurbs.sweep': 'スイープ',
   'body.mirror': 'ミラー', 'body.pattern': '配列複写', 'body.split': '平面で分割', 'body.offset': '太らせる / 痩せさせる', 'face.draft': '抜き勾配', 'body.section': '断面を取り出す',
-  'sketch.offset': 'オフセット', 'sketch.path': 'ライン', 'sketch.polygon': '多角形', 'sketch.rect': '矩形', 'sketch.circle': '円', 'region.extrude': '押し出し', 'face.extrude': 'プッシュ/プル',
+  'sketch.offset': 'オフセット', 'sketch.line': 'ライン', 'sketch.path': 'ライン', 'sketch.polygon': '多角形', 'sketch.rect': '矩形', 'sketch.circle': '円', 'region.extrude': '押し出し', 'face.extrude': 'プッシュ/プル',
   'face.move': '面を動かす', 'dim.add': '寸法', 'face.split': '面を分割', 'edge.move': 'エッジを移動', 'edge.fillet': 'フィレット', 'edge.chamfer': '面取り', 'body.shell': 'シェル', 'body.boolean': 'ブーリアン', 'body.transform': '移動・回転・拡大', 'body.duplicate': '複製',
   'body.material': '素材と色', 'face.color': '面の色', 'face.delete': '面を削除', 'body.delete': 'ボディを削除', 'file.import': '読み込み'};
 const tipEl = Object.assign(document.createElement('div'), {id: 'tip'}); document.body.append(tipEl);

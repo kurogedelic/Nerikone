@@ -314,7 +314,7 @@ details.more{margin-top:6px}details.more summary{cursor:pointer;color:var(--dim)
 #dimlabels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .dlabel{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:baseline;gap:3px;background:#0d0e10e0;border:1px solid #e6e8ec55;border-radius:5px;
   padding:1px 6px;font:var(--fs-s) var(--font);white-space:nowrap;pointer-events:auto}
-.dlabel b{font-size:var(--fs-m);color:#f1f3f6}.dlabel span{color:var(--dim)}.dlabel i{font-style:normal;font-weight:700}
+.dlabel b{font-size:var(--fs-m);color:#f1f3f6}.dlabel span{color:var(--dim)}.dlabel i{font-style:normal;font-weight:700;font-size:var(--fs-m)}
 .dlabel.live{border-color:#4fc3f7aa}.dlabel button{min-width:15px;height:15px;padding:0;margin-left:2px;opacity:0}.dlabel:hover button{opacity:.7}
 .dlabel button:hover{opacity:1;background:#ff6b6b55}.dlabel button .ti{font-size:11px}
 

@@ -67,7 +67,7 @@ export const CMD_ICON = {
   'sketch.extrude': 'extrude', 'nurbs.surface': 'surface', 'nurbs.loft': 'loft', 'nurbs.revolve': 'revolve',
   'face.move': 'push', 'edge.fillet': 'fillet', 'edge.chamfer': 'chamfer', 'body.shell': 'shell',
   'body.boolean': 'union', 'body.transform': 'move', 'body.duplicate': 'duplicate', 'body.delete': 'trash',
-  'file.import': 'import', 'face.split': 'pencil', 'dim.add': 'dimension', 'edge.move': 'move', 'sketch.path': 'pencil', 'sketch.polygon': 'polygon', 'sketch.rect': 'rectangle', 'sketch.circle': 'circle', 'sketch.offset': 'offset',
+  'file.import': 'import', 'face.split': 'pencil', 'dim.add': 'dimension', 'edge.move': 'move', 'sketch.line': 'pencil', 'sketch.path': 'pencil', 'sketch.polygon': 'polygon', 'sketch.rect': 'rectangle', 'sketch.circle': 'circle', 'sketch.offset': 'offset',
   'body.mirror': 'mirror', 'body.pattern': 'pattern', 'body.split': 'split', 'nurbs.sweep': 'sweep', 'body.offset': 'scale', 'face.draft': 'perspective', 'body.section': 'section',
   'region.extrude': 'push', 'face.extrude': 'push',
 };

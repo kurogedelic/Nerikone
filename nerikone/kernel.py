@@ -348,6 +348,22 @@ def _spath(B, p):
     B[p["name"]] = _region(_outline([tuple(q[:2]) for q in p["points"]], p["bulges"]).on(_plane(p)), p)
 
 
+@command("sketch.line", "Line", "Sketch",
+         "An open polyline of straight segments on a plane (2 or more points, plane coordinates). It is not a region: "
+         "it has edges only, to measure from, snap to or use as a guide.",
+         [*PLANE, P("points", "points", [[0, 0], [2, 0]], "[x, y] points, in order")], creates=True)
+def _sline(B, p):
+    pts = [tuple(q[:2]) for q in p["points"]]
+    if len(pts) < 2:
+        raise BadParams("a line needs at least 2 points")
+    segs = []
+    for i, (a, b) in enumerate(zip(pts, pts[1:])):
+        if math.dist(a, b) < 1e-9:
+            raise BadParams(f"points {i} and {i + 1} coincide")
+        segs.append(sm.Line(a, b))
+    B[p["name"]] = sm.Wire(segs).on(_plane(p))
+
+
 @command("sketch.offset", "Offset outline", "Sketch",
          "A new region whose outline is that of a sketch region, or of the flat face of a body nearest `at`, moved "
          "outwards (positive) or inwards (negative) by `distance`. `ring` keeps only the band between the two outlines.",
@@ -638,6 +654,7 @@ class Dimension:
     b: tuple
     offset: tuple
     axis: str  # "aligned" or "X" / "Y" / "Z"
+    kind: str = "length"  # "length", "radius" (a = centre, b = a point on the curve) or "diameter" (a, b opposite points on it)
 
     @property
     def value(self):
@@ -651,9 +668,11 @@ class Dimension:
          "A dimension between the points `a` and `b`: their distance (axis aligned) or how far apart they are along X, Y "
          "or Z. `offset` moves the dimension line away from the points (the extension lines run back to them).",
          [P("a", "vec3", [0, 0, 0]), P("b", "vec3", [1, 0, 0]), P("offset", "vec3", [0, -0.5, 0]),
-          P("axis", "enum", "aligned", options=["aligned", "X", "Y", "Z"])], creates=True)
+          P("axis", "enum", "aligned", options=["aligned", "X", "Y", "Z"]),
+          P("kind", "enum", "length", "length, or the radius / diameter of a round shape (a, b as described by the kind)",
+            options=["length", "radius", "diameter"])], creates=True)
 def _dim(B, p):
-    d = Dimension(tuple(p["a"]), tuple(p["b"]), tuple(p["offset"]), p["axis"])
+    d = Dimension(tuple(p["a"]), tuple(p["b"]), tuple(p["offset"]), p["axis"], p["kind"])
     if d.value < 1e-9:
         raise BadParams("the two points are at the same place" + ("" if p["axis"] == "aligned" else f" along {p['axis']}"))
     B[p["name"]] = d
@@ -891,7 +910,7 @@ def _fdel(B, p):
 
 @command("body.delete", "Delete body", "Modify", "Remove a body.", [P("body", "body", "")])
 def _del(B, p):
-    _body(B, p["body"], (sm.Part, sm.Shell, sm.Mesh, sm.Sketch, Dimension))
+    _body(B, p["body"], (sm.Part, sm.Shell, sm.Mesh, sm.Sketch, sm.Wire, Dimension))
     del B[p["body"]]
 
 
@@ -1158,7 +1177,7 @@ def body_info(b):
         lo = [min(b.a[i], b.b[i], b.a[i] + b.offset[i]) for i in range(3)]
         hi = [max(b.a[i], b.b[i], b.a[i] + b.offset[i]) for i in range(3)]
         return {"kind": "Dimension", "bbox": [lo, hi], "color": None,
-                "dim": {"a": list(b.a), "b": list(b.b), "offset": list(b.offset), "axis": b.axis, "value": round(b.value, 9)}}
+                "dim": {"a": list(b.a), "b": list(b.b), "offset": list(b.offset), "axis": b.axis, "kind": b.kind, "value": round(b.value, 9)}}
     bb = b.bbox()
     d = {"kind": type(b).__name__, "bbox": [list(bb.min), list(bb.max)], "color": hex_color(getattr(b, "color", None))}
     if isinstance(b, (sm.Part, sm.Shell)):
@@ -1266,7 +1285,32 @@ def measure(doc: "Document", kind: str, p: dict) -> dict:
         na, nb = fa.normal_at(), fb.normal_at()
         c = max(-1.0, min(1.0, na.dot(nb) / (na.length * nb.length)))
         return {"angle": round(math.degrees(math.acos(c)), 6), "normal_a": _v(na), "normal_b": _v(nb)}
-    raise BadParams("kind must be one of: body, distance, interference, draft, angle")
+    if kind == "round":  # {body, at}: the round shape (sphere, cylinder, circle or arc edge) nearest `at`, for radius / diameter dimensions
+        b = _body(B, p.get("body", ""), SOLIDS + (sm.Sketch,))
+        at = sm.Vector(*p["at"])
+        edges = list(b.edges())
+        e = min(edges, key=lambda x: x.distance_to(tuple(at))) if edges else None
+        f = min(b.faces(), key=lambda x: x.distance_to(tuple(at)))
+        if e is not None and e.distance_to(tuple(at)) < 1e-3 and e.geom_type in ("circle", "arc", "ellipse"):  # a round edge under the pointer
+            c, r = e.arc_center, e.radius
+            v = at - c
+            v = v - e.normal * v.dot(e.normal)
+            v = v.normalized() if v.length > 1e-9 else e.normal.cross(sm.Vector(1, 0, 0))
+            return {"type": "circle" if e.is_closed else "arc", "radius": round(r, 9), "center": _v(c), "point": _v(c + v * r), "axis": _v(e.normal)}
+        if f.geom_type in ("sphere", "cylinder", "cone"):
+            ax = f.axis
+            o, d = sm.Vector(*ax.origin), sm.Vector(*ax.direction)
+            c = o if f.geom_type == "sphere" else o + d * (at - o).dot(d)
+            v = at - c
+            if f.geom_type != "sphere":
+                v = v - d * v.dot(d)
+            if v.length < 1e-9:
+                raise BadParams("the point is on the axis")
+            r = f.radius if f.geom_type != "cone" else v.length
+            return {"type": f.geom_type, "radius": round(r, 9), "center": _v(c), "point": _v(c + v.normalized() * r),
+                    "axis": None if f.geom_type == "sphere" else _v(d)}
+        return {"type": "none"}
+    raise BadParams("kind must be one of: body, distance, interference, draft, angle, round")
 
 
 # ---------------------------------------------------------------- tessellation for the viewer
@@ -1279,7 +1323,10 @@ def mesh_body(b):
     hit = _mesh_cache.get(key)
     if hit and hit[0] is b:
         return hit[1]
-    if isinstance(b, sm.Mesh):
+    if isinstance(b, sm.Wire):  # an open line: edges only
+        d = {"faces": [], "edges": [{"pts": [_v(e.point_at(j / (1 if e.geom_type == "line" else 40))) for j in range((1 if e.geom_type == "line" else 40) + 1)],
+                                     "mid": _v(e.point_at(0.5))} for e in b.edges()]}
+    elif isinstance(b, sm.Mesh):
         d = {"faces": [{"verts": b.vertices.round(5).ravel().tolist(), "tris": b.triangles.ravel().tolist(),
                         "type": "mesh", "planar": False, "normal": None}], "edges": []}
     else:
@@ -1341,7 +1388,7 @@ def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: f
         return json.dumps(doc.to_json()).encode()
     if tolerance is not None and not (1e-6 <= tolerance <= 1e3):
         raise BadParams("tolerance must be between 0.000001 and 1000")
-    shapes = [b for n, b in doc.bodies.items() if (not names or n in names) and not isinstance(b, (sm.Sketch, Dimension))]
+    shapes = [b for n, b in doc.bodies.items() if (not names or n in names) and not isinstance(b, (sm.Sketch, sm.Wire, Dimension))]
     if not shapes:
         raise BadParams("nothing to export")
     step_unit = {"in": "inch"}.get(doc.units, doc.units)
@@ -1354,7 +1401,7 @@ def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: f
     if fmt == "3mf":
         meshes = []
         for n, b in doc.bodies.items():
-            if (names and n not in names) or isinstance(b, (sm.Sketch, Dimension)):
+            if (names and n not in names) or isinstance(b, (sm.Sketch, sm.Wire, Dimension)):
                 continue
             m = b if isinstance(b, sm.Mesh) else b.mesh(tolerance)
             meshes.append((n, m.vertices, m.triangles))
@@ -1370,7 +1417,7 @@ def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: f
         for n, b in doc.bodies.items():
             if names and n not in names:
                 continue
-            if isinstance(b, (sm.Sketch, Dimension)):
+            if isinstance(b, (sm.Sketch, sm.Wire, Dimension)):
                 continue
             m = b if isinstance(b, sm.Mesh) else b.mesh(tolerance)
             meshes.append((n, m.vertices, m.triangles))
