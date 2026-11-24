@@ -373,3 +373,4 @@ input[type=color]{height:var(--ctl);padding:2px}
 
 /* the build number: the left end of the status bar; it changes whenever the code does, so a stale cached copy is easy to spot */
 #buildid{flex:none;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.04em;text-transform:lowercase}
+#ctxbar button,#ctxbar .lbl{white-space:nowrap}

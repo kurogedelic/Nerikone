@@ -1221,6 +1221,23 @@ function contextActions() {
   return out;
 }
 function renderCtx() {
+  if (S.imp) {
+    const f = S.doc.features.find(x => x.id === S.imp.id), sz = f && importSize(f);
+    if (!f || !sz) S.imp = null;
+    else {
+      const bar = $('ctxbar'); bar.hidden = false; const u = S.doc.units || 'mm', cur = f.params.scale || 1, place = f.params.place || 'asis';
+      const unitBtn = k => `<button data-impunit="${k}" class="${Math.abs(UNIT_M[k] / UNIT_M[u] - cur) < 1e-9 ? 'on' : ''}" data-tip="ファイルの単位は ${k}">${k === 'in' ? 'inch' : k}</button>`;
+      const placeBtn = (k, label, tip) => `<button data-impplace="${k}" class="${place === k ? 'on' : ''}" data-tip="${tip}">${label}</button>`;
+      bar.innerHTML = `<span class="lbl">${icon('import')} ${esc(f.params.name)} <span class="dim">${sz.size.map(x => fmtN(x)).join(' × ')} ${u}</span></span>` +
+        `<span class="sep"></span><span class="dim">単位</span>${['mm', 'cm', 'm', 'in'].map(unitBtn).join('')}` +
+        `<span class="sep"></span><span class="dim">位置</span>${placeBtn('asis', 'そのまま', 'ファイルの座標どおり')}${placeBtn('origin', '原点', '中心を原点（0, 0, 0）に置く')}${placeBtn('ground', '地面', '中心を原点の上に、いちばん下を地面（Z = 0）に置く')}` +
+        `<button id="imp_close" data-tip="閉じる">${icon('close')}</button>`;
+      bar.querySelectorAll('[data-impunit]').forEach(b => b.onclick = () => updateFeature(f.id, {scale: UNIT_M[b.dataset.impunit] / UNIT_M[u]}).then(() => { frame(Object.keys(S.doc.bodies).filter(n => n === f.params.name || n.startsWith(f.params.name + '.'))); }));
+      bar.querySelectorAll('[data-impplace]').forEach(b => b.onclick = () => updateFeature(f.id, {place: b.dataset.impplace}));
+      $('imp_close').onclick = () => { S.imp = null; renderCtx(); };
+      return;
+    }
+  }
   if (S.tool === 'pushpull') {
     const bar = $('ctxbar'); bar.hidden = false;
     bar.innerHTML = `<span class="lbl">${icon('push')} プッシュ/プル${S.ppLast != null ? ` <span class="dim">前回 ${S.ppLast.toFixed(3)}</span>` : ''}</span>` +
@@ -1327,6 +1344,25 @@ async function download(fmt) {
   } catch (err) { reportError(err.message, '書き出し'); }
 }
 const IMPORTABLE = /\.(step|stp|iges|igs|stl|obj|glb|3mf|wrl|wrz|vrml|nrk)$/i;
+// After an import: guess what unit the file is in from its size (STL, OBJ, GLB ... carry none), apply it, and offer the unit and the
+// placement (as the file has it / centred on the origin / on the ground) in the bar at the bottom.
+const UNIT_M = {mm: 0.001, cm: 0.01, m: 1, in: 0.0254};
+const importBodies = name => Object.entries(S.doc.bodies).filter(([n]) => n === name || n.startsWith(name + '.')).map(([, b]) => b);
+function importSize(f) { // the size of what the import made, in model units, and what it would be at scale 1
+  const bs = importBodies(f.params.name); if (!bs.length) return null;
+  const lo = [0, 1, 2].map(i => Math.min(...bs.map(b => b.bbox[0][i]))), hi = [0, 1, 2].map(i => Math.max(...bs.map(b => b.bbox[1][i])));
+  const size = hi.map((h, i) => h - lo[i]), k = f.params.scale || 1;
+  return {size, raw: size.map(x => x / k)};
+}
+function guessUnit(rawMax) { for (const u of ['mm', 'm', 'cm', 'in']) { const s = rawMax * UNIT_M[u]; if (s >= 0.003 && s <= 5) return u; } return 'mm'; }
+async function importHint() {
+  const f = [...S.doc.features].reverse().find(x => x.cmd === 'file.import'); if (!f) return;
+  const sz = importSize(f); if (!sz) return;
+  const docU = S.doc.units || 'mm', want = guessUnit(Math.max(...sz.raw)), scale = UNIT_M[want] / UNIT_M[docU];
+  S.imp = {id: f.id}; renderCtx();
+  if (Math.abs((f.params.scale || 1) - scale) > 1e-12) await updateFeature(f.id, {scale});
+  S.imp = {id: f.id}; frame(importBodies(f.params.name).length ? Object.keys(S.doc.bodies).filter(n => n === f.params.name || n.startsWith(f.params.name + '.')) : null); renderCtx();
+}
 async function importFiles(files) {
   for (const f of files) {
     if (!IMPORTABLE.test(f.name)) { reportError(`${f.name}: 読み込めない形式です（STEP / IGES / STL / OBJ / GLB / 3MF / WRL / .nrk）`, '読み込み'); continue; }
@@ -1335,6 +1371,7 @@ async function importFiles(files) {
       applyState(await req('POST', 'api/import?filename=' + encodeURIComponent(f.name), await f.arrayBuffer(), true));
       if (/\.nrk$/i.test(f.name)) setDocName(f.name.replace(/\.nrk$/i, ''));
       toast(`${f.name} を読み込みました`); log('ok', `読み込み  ${f.name}`);
+      if (!/\.nrk$/i.test(f.name)) await importHint();
     } catch (err) { reportError(err.message, `読み込み ${f.name}`); }
   }
 }

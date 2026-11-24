@@ -936,7 +936,10 @@ def add_blob(data: bytes) -> str:
          "Bodies from an imported file (`blob` = id returned by the import endpoint). STEP and IGES give exact B-rep "
          "solids/sheets; STL, WRL, OBJ, GLB and 3MF give a display mesh unless to_solid.",
          [P("blob", "blob", ""), P("format", "enum", "step", options=["step", "stl", "wrl", "obj", "glb", "3mf", "iges"]),
-          P("to_solid", "bool", False, "mesh formats only: convert the mesh to a solid")], creates=True)
+          P("to_solid", "bool", False, "mesh formats only: convert the mesh to a solid"),
+          P("scale", "float", 1, "multiplies the file's coordinates (1000 for a file in metres, into a millimetre document)", 1e-9),
+          P("place", "enum", "asis", "asis: where the file puts it; origin: its centre on the origin; ground: centred on the origin "
+            "and resting on the ground (its lowest point at z = 0)", options=["asis", "origin", "ground"])], creates=True)
 def _imp(B, p):
     data = BLOBS.get(p["blob"])
     if data is None:
@@ -947,12 +950,29 @@ def _imp(B, p):
                                                                            "3mf": meshio.read_3mf}[p["format"]](data))
         except meshio.MeshError as e:
             raise BadParams(str(e)) from None
-        B[p["name"]] = m.to_part() if p["to_solid"] else m
-        return
-    r = sm.from_iges(data) if p["format"] == "iges" else sm.from_step(data)
-    shapes = list(r) if isinstance(r, (list, tuple, sm.ShapeList)) else [r]
+        shapes = [m.to_part() if p["to_solid"] else m]
+    else:
+        r = sm.from_iges(data) if p["format"] == "iges" else sm.from_step(data)
+        shapes = list(r) if isinstance(r, (list, tuple, sm.ShapeList)) else [r]
+    shapes = _fit_import(shapes, p["scale"], p["place"])
     for i, s in enumerate(shapes):
         B[p["name"] if i == 0 else f"{p['name']}.{i}"] = s
+
+
+def _fit_import(shapes, scale, place):
+    """The imported shapes scaled about the origin, then placed: as the file has them, centred on the origin, or on the ground."""
+    if abs(scale - 1) > 1e-12:
+        shapes = [s.scale(scale) for s in shapes]
+    if place == "asis" or not shapes:
+        return shapes
+    lo, hi = [1e300] * 3, [-1e300] * 3
+    for s in shapes:
+        bb = s.bbox()
+        lo = [min(lo[i], bb.min[i]) for i in range(3)]
+        hi = [max(hi[i], bb.max[i]) for i in range(3)]
+    dx, dy = -(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2
+    dz = -lo[2] if place == "ground" else -(lo[2] + hi[2]) / 2
+    return [s.translate(dx, dy, dz) for s in shapes]
 
 
 # ---------------------------------------------------------------- document
