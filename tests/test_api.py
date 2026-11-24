@@ -166,3 +166,12 @@ def test_server_exec_round_trip(server):
     code, data, _ = http(server, "/api/exec", {"cmd": "body.box", "params": {"length": -1}})
     assert code == 400 and json.loads(data)["error"]
     assert http(server, "/api/state")[0] == 200
+
+
+def test_exec_reports_bodies_made_and_used_up():
+    call("POST", "/api/exec", {"cmd": "body.box", "params": {}})
+    code, d = call("POST", "/api/exec", {"cmd": "body.pattern", "params": {"body": "Box1", "count": 3}})
+    made = d["created"]
+    assert len(made) == 2 and d["removed"] == [] and all(n in d["doc"]["bodies"] for n in made)
+    code, d = call("POST", "/api/exec", {"cmd": "body.boolean", "params": {"kind": "union", "target": "Box1", "tools": made[:1]}})
+    assert d["created"] == [] and d["removed"] == made[:1]

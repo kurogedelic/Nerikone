@@ -1580,6 +1580,7 @@ function renderInspector() {
     ic = 'doc'; title = S.docName && S.docName !== 'nerikone' ? S.docName : '名称未設定'; sub = 'ドキュメント';
     const all = Object.values(S.doc.bodies);
     h += `<div class="isec"><div class="irow"><span>単位</span><select id="i_units">${['mm', 'cm', 'm', 'in'].map(k => `<option ${k === u ? 'selected' : ''}>${k}</option>`).join('')}</select></div></div>`;
+    h += varsPanel();
     const ib = (id, ic2, tip, on = false) => `<button data-act="${id}" class="ib ${on ? 'on' : ''}" data-tip="${esc(tip)}" aria-label="${esc(tip)}">${icon(ic2)}</button>`;
     const opt = (id, list, cur, unit = '') => `<select id="${id}">${list.map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}${unit}</option>`).join('')}</select>`;
     const sn = S.snap, tg = (id, ic2, tip, on) => `<label class="itog" data-tip="${esc(tip)}" aria-label="${esc(tip)}"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}>${icon(ic2)}</label>`;
@@ -1599,6 +1600,7 @@ function renderInspector() {
   else if (f) renderForm($('i_form'), S.cmds[f.cmd], f.params, p => updateFeature(f.id, p), '適用', true, f);
   $('i_measure_go')?.addEventListener('click', () => measureInto($('i_measure')));
   $('i_units')?.addEventListener('change', e => setUnits(e.target.value));
+  bindVarsPanel();
   for (const [id, k, num] of [['i_snap_on', 'on'], ['i_snap_grid', 'grid'], ['i_snap_inc', 'inc'], ['i_snap_step', 'step', 1], ['i_snap_len', 'len', 1], ['i_snap_angle', 'angle', 1]])
     $(id)?.addEventListener('change', e => { S.snap[k] = num ? +e.target.value : e.target.checked; saveSnap(); if (k === 'step') buildGrid(); renderTop(); });
   const matApply = async finish => { const color = $('i_color').value; for (const n of bodies) await commit('body.material', {body: n, color, finish: finish || S.doc.bodies[n]?.finish || 'plastic'}, {keepSel: true}); };
@@ -1694,6 +1696,29 @@ const DIAGRAMS = {
   'edge.chamfer': {svg: dgSvg('<path d="M30 130V56l36-36h144" stroke-width="2"/><path d="M30 130h180" opacity=".35"/><path class="dm" d="M30 56h36M66 20v36"/>'), slots: [['length', 36, 66]]},
   'body.shell': {svg: dgSvg('<path d="M120 20 200 62v52l-80 36-80-36V62z" fill="currentColor" fill-opacity=".08"/><path d="M120 52 168 76v34l-48 22-48-22V76z" fill="currentColor" fill-opacity=".14"/><path class="dm" d="M168 76l32-14"/>'), slots: [['thickness', 70, 24]]},
 };
+// ---- variables (var.set): named numbers that later steps use in expressions; listed and edited with nothing selected
+const varStep = name => S.doc.features.findLast(f => f.cmd === 'var.set' && f.params.var === name && !f.suppressed);
+function varsPanel() {
+  const vars = S.doc.variables || {}, names = Object.keys(vars);
+  const rows = names.map(n => { const f = varStep(n), v = f?.params.value ?? vars[n];
+    return `<div class="crow" data-var="${esc(n)}"><span class="ck">${esc(n)}</span>${numInput('v_' + n, v, 0.1)}<span class="cref">${isExpr(v) ? '= ' + fmtN(vars[n]) : ''}</span>` +
+      (f ? `<button class="ib" data-vdel="${f.id}" data-tip="この変数の手順を消す" aria-label="この変数の手順を消す">${icon('close')}</button>` : '') + '</div>'; }).join('');
+  return `<div class="isec cons" id="i_vars"><h5 data-tip="変数" aria-label="変数">${icon('settings')} <span class="sub">${names.length ? '式の中で =名前 として使えます' : ''}</span></h5>${rows}` +
+    `<div class="ibtns"><button id="i_var_add">${icon('add')} 変数を追加</button></div></div>`;
+}
+function bindVarsPanel() {
+  $('i_var_add')?.addEventListener('click', async () => {
+    const name = prompt('変数の名前（英字・数字・_）', 'w'); if (!name) return;
+    const value = prompt(`${name} の値（数字か =式）`, '1'); if (value == null || value === '') return;
+    await commit('var.set', {var: name.trim(), value: numOf(value)});
+  });
+  document.querySelectorAll('#i_vars [data-var]').forEach(row => {
+    const n = row.dataset.var, inp = row.querySelector('input'), f = varStep(n);
+    inp?.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+    inp?.addEventListener('change', () => { if (f) updateFeature(f.id, {value: numOf(inp.value)}); });
+  });
+  document.querySelectorAll('#i_vars [data-vdel]').forEach(b => b.onclick = () => updateFeature(+b.dataset.vdel, null, {delete: true}));
+}
 // A number field takes a number or an expression over the document's variables ("=wall_h + 0.2", see var.set).
 const isExpr = v => typeof v === 'string' && v.trim().startsWith('=');
 const numOf = t => isExpr(t) ? t.trim() : +t;
@@ -2829,7 +2854,7 @@ if (innerWidth < 900) document.body.classList.add('no-rcol'); // a narrow window
 rapply();
 
 // ------------------------------------------------------------------ tooltips (data-tip, data-key, data-sub)
-const TOOL_JA = {'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
+const TOOL_JA = {'var.set': '変数', 'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
   'sketch.extrude': '多角形を押し出し', 'nurbs.surface': 'NURBS 曲面', 'nurbs.loft': 'ロフト', 'nurbs.revolve': '回転体', 'nurbs.sweep': 'スイープ',
   'body.mirror': 'ミラー', 'hole.fill': '穴をふさぐ', 'body.pattern': '配列複写', 'body.split': '平面で分割', 'body.offset': '太らせる / 痩せさせる', 'face.draft': '抜き勾配', 'body.section': '断面を取り出す',
   'sketch.offset': 'オフセット', 'sketch.line': 'ライン', 'sketch.path': 'ライン', 'sketch.polygon': '多角形', 'sketch.rect': '矩形', 'sketch.circle': '円', 'region.extrude': '押し出し', 'face.extrude': 'プッシュ/プル',

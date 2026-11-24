@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import tempfile
 import threading
 import zipfile
@@ -154,6 +155,11 @@ def coerce(cmd: Command, params: dict) -> dict:
             raise BadParams(f"{cmd.id}.{p.name}: must be <= {p.max}")
         out[p.name] = v
     return out
+
+
+def made_and_gone(before, bodies) -> dict:
+    """Which bodies a step created and which it used up (a pattern's copies, a boolean's tools)."""
+    return {"created": sorted(set(bodies) - set(before)), "removed": sorted(set(before) - set(bodies))}
 
 
 def resolve(cmd: Command, params: dict, variables: dict) -> dict:
@@ -380,8 +386,8 @@ def _ext(B, p):
 # A region is a flat sheet (Sketch) lying on a plane: the ground or a planar face. Pushing/pulling it with
 # region.extrude makes a solid, or adds to / cuts from the body it was drawn on.
 
-PLANE = [P("origin", "vec3", [0, 0, 0], "plane origin"), P("normal", "vec3", [0, 0, 1], "plane normal"),
-         P("xdir", "vec3", [1, 0, 0], "plane X direction"),
+PLANE = [P("origin", "vec3", [0, 0, 0], "plane origin"), P("normal", "vec3", [0, 0, 1], "plane normal (a region extrudes along it)"),
+         P("xdir", "vec3", [1, 0, 0], "plane X direction; plane Y is normal x xdir (facing -Y with xdir +X, Y points up)"),
          P("on_body", "str", "", "body the sketch was drawn on (target of a later push/pull)")]
 
 
@@ -1783,7 +1789,17 @@ def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: f
         if not parts:
             raise BadParams("a drawing needs at least one solid or surface body")
         views = sm.drawing_views(parts)
-        return (sm.to_svg(views) if fmt == "svg" else sm.to_dxf(views, unit=step_unit)).encode()
+        if fmt == "dxf":
+            return sm.to_dxf(views, unit=step_unit).encode()
+        # the SVG writer takes model units as mm: give the sheet its true size for the document's unit (coordinates stay)
+        k = {"mm": 1, "cm": 10, "m": 1000, "in": 25.4}[doc.units]
+        svg = sm.to_svg(views)
+        if k != 1:
+            svg = re.sub(r'(<svg[^>]*?\b(?:width|height)=")([0-9.eE+-]+)mm"',
+                         lambda m: f'{m.group(1)}{float(m.group(2)) * k:.6g}mm"', svg, count=1)
+            svg = re.sub(r'(<svg[^>]*?\bheight=")([0-9.eE+-]+)mm"',
+                         lambda m: f'{m.group(1)}{float(m.group(2)) * k:.6g}mm"', svg, count=1)
+        return svg.encode()
     if fmt == "wrl":
         meshes = []
         for n, b in doc.bodies.items():

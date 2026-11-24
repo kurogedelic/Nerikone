@@ -71,9 +71,10 @@ def handle(method, path, query=None, body=b""):
         if path == "/api/exec":
             if b.get("preview"):
                 return _json({"scene": K.scene(doc.preview(b["cmd"], b.get("params", {})))})
+            before = set(doc.bodies)
             f = doc.execute(b["cmd"], b.get("params", {}))
             version += 1
-            return _json({"feature": f, **_state()})
+            return _json({"feature": f, **K.made_and_gone(before, doc.bodies), **_state()})
         if path == "/api/limits":
             lim = doc.limit(b["cmd"], b.get("params", {}), b["param"], float(b["lo"]), float(b["hi"]), b.get("direction"), min(int(b.get("iters", 10)), 12))
             return _json({"max": lim})

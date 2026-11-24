@@ -109,3 +109,14 @@ def test_drawing_views(two):
     svg = K.export(two, "svg").decode()
     assert svg.lstrip().startswith("<") and "<svg" in svg
     assert b"SECTION" in K.export(two, "dxf")
+
+
+@pytest.mark.parametrize("units,k", [("mm", 1), ("cm", 10), ("m", 1000), ("in", 25.4)])
+def test_drawing_sheet_is_true_size(units, k):
+    import re
+    d = build(("body.box", {"length": 8, "width": 6, "height": 3}))
+    d.set_units(units)
+    head = re.search(r"<svg[^>]*>", K.export(d, "svg").decode()).group(0)
+    w = float(re.search(r'width="([0-9.]+)mm"', head).group(1))
+    vb = [float(x) for x in re.search(r'viewBox="([^"]+)"', head).group(1).split()]
+    assert w == approx(vb[2] * k, rel=1e-5)

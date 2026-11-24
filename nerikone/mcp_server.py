@@ -22,7 +22,9 @@ URL = os.environ.get("NERIKONE_URL", "http://127.0.0.1:8765")
 INSTRUCTIONS = """Nerikone is a direct-modeling NURBS/B-rep CAD (SMLib kernel) with a parametric timeline.
 Workflow: list_commands -> run_command to create/modify -> inspect_body to get face/edge reference points ->
 run_command with those points (face_ref / edge_refs params) -> update_feature to change any earlier dimension.
-Units are model units (treat as mm when exporting). Z is up. Faces/edges are referenced by a point on them, never
+Units are model units (set_units says what one is). Z is up. run_command reports the bodies it created and removed.
+Name numbers with the var.set command; any later number can then be an expression such as "=W/2 + 0.1".
+Sketch planes: x runs along xdir, y along normal x xdir (a plane facing -Y with xdir +X has y pointing up). Faces/edges are referenced by a point on them, never
 by index. A failed command changes nothing and returns the kernel's reason; adjust and retry."""
 
 mcp = MCPServer("nerikone", instructions=INSTRUCTIONS)
@@ -69,7 +71,7 @@ def run_command(cmd: str, params: dict | None = None) -> dict:
     """Run a command (e.g. 'body.box', 'edge.fillet') and append it to the timeline. Returns the new feature and
     the document. Omitted params take their defaults; creation commands auto-name the body unless `name` is given."""
     d = _call("POST", "/api/exec", {"cmd": cmd, "params": params or {}})
-    return {"feature": d["feature"], **_doc(d)}
+    return {"feature": d["feature"], "created": d.get("created", []), "removed": d.get("removed", []), **_doc(d)}
 
 
 @mcp.tool()

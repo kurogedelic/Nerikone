@@ -258,9 +258,10 @@ class H(BaseHTTPRequestHandler):
                         raise K.BadParams(cap)
                     if body.get("preview"):
                         return self._json({"scene": K.scene(doc.preview(body["cmd"], body.get("params", {})))})
+                    before = set(doc.bodies)
                     f = doc.execute(body["cmd"], body.get("params", {}))
                     s.version += 1
-                    return self._json({"feature": f, **state(s)})
+                    return self._json({"feature": f, **K.made_and_gone(before, doc.bodies), **state(s)})
                 if path == "/api/limits":  # {cmd, params, param, lo, hi, direction?, iters?}
                     lim = doc.limit(body["cmd"], body.get("params", {}), body["param"], float(body["lo"]), float(body["hi"]),
                                     body.get("direction"), min(int(body.get("iters", 10)), 12))
