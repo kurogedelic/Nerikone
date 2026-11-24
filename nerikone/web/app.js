@@ -2109,6 +2109,7 @@ function sketchPreview(cur) {
   else if (S.tool === 'line' && k.arcEnd) { const a = uvOf(k.pts.at(-1), k.plane), e = uvOf(k.arcEnd, k.plane), h = Math.hypot(e[0] - a[0], e[1] - a[1]) / 2, sg = Math.abs(k.arcBulge || 0) * h;
     hud(`円弧 R ${sg > 1e-9 ? ((h * h + sg * sg) / (2 * sg)).toFixed(3) : '∞'}`); }
   else if (S.tool === 'line' && cur && atStart(cur) && canClose()) hud(`<span class="lim">閉じる</span>`);
+  else if (S.tool === 'line' && S.sk?.plane?.on_body && S.sk.snaps?.[0] && S.sk.snaps.at(-1) && S.sk.pts.length >= 2 && !atStart(cur || S.sk.pts[0])) hud(`<span class="lim">ダブルクリックか Enter で面を分割</span>`);
   else if (S.tool === 'line') hud((k.arcNext ? '<span class="lim">円弧</span> ' : '') + (k.seg ? `長さ ${k.seg.len.toFixed(3)} <span class="dim">· ${k.seg.angle.toFixed(0)}°${k.axis ? ' · ' + {axis: '軸', par: 'エッジに平行', perp: 'エッジに直角', lock: `${k.lock} 軸に固定`}[k.axisKind] : ''} · ${k.pts.length} 点</span>${t}` : `ライン ${k.pts.length} 点${t}`));
   else if (S.tool === 'poly') hud(`多角形 ${k.pts.length} 点${t}`);
 }
@@ -2172,14 +2173,9 @@ function sketchClick(e) {
       S.sk.arcEnd = closing ? S.sk.pts[0].clone() : q.p; S.sk.arcCloses = closing; S.sk.typed = ''; sketchPreview(q.p); renderStatus(); return;
     }
     if (closing) { if (canClose()) finishSketch(); return; } // joined up with the start: that is the end of the outline
-    // from the border of a face to its border: split the face along the line (each half can then be pushed or
-    // pulled, and the line moved, say into the ridge of a roof)
-    if (S.tool === 'line' && S.sk.pts.length === 1 && S.sk.startSnap && q.snap && S.sk.plane.on_body) {
-      const body = S.sk.plane.on_body, pts = [arr(S.sk.pts[0]), arr(q.p)];
-      S.sk = null; sketchPreview(); hud('');
-      commit('face.split', {body, points: pts}).then(() => { renderStatus(); renderTools(); });
-      return;
-    }
+    // The line goes on: more points make a polyline, the start point closes it into a region. Ended with a double-click or Enter,
+    // a line that runs from the border of a face to its border splits that face along it (see finishSketch).
+    (S.sk.snaps ||= [!!S.sk.startSnap]).push(!!q.snap);
     S.sk.pts.push(q.p); S.sk.typed = ''; S.sk.lock = null; sketchPreview(q.p); renderStatus(); return;
   }
   shapePoints(q.p); finishSketch();
@@ -2218,6 +2214,7 @@ async function finishSketch(open = false) {
   if (S.tool === 'rect') { if (!k.rect || k.rect.width < 1e-4 || k.rect.height < 1e-4) return; cmd = 'sketch.rect'; params = {...base, ...k.rect}; }
   else if (S.tool === 'circle') { if (!k.circle || k.circle.radius < 1e-4) return; cmd = 'sketch.circle'; params = {...base, ...k.circle}; }
   else if (k.bulges?.some(Boolean)) { if (k.pts.length < 2) return; cmd = 'sketch.path'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5))), bulges: k.pts.map((_, i) => k.bulges[i] || 0)}; }
+  else if (open && S.tool === 'line' && pl.on_body && k.snaps?.[0] && k.snaps.at(-1) && k.pts.length >= 2) { cmd = 'face.split'; params = {body: pl.on_body, points: k.pts.map(arr)}; }
   else if (open && S.tool === 'line') { if (k.pts.length < 2) return; cmd = 'sketch.line'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5)))}; }
   else { if (k.pts.length < 3) return; cmd = 'sketch.polygon'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5)))}; }
   for (const key of ['x', 'y', 'width', 'height', 'radius']) if (key in params) params[key] = +params[key].toFixed(5);

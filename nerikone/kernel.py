@@ -130,7 +130,7 @@ def coerce(cmd: Command, params: dict) -> dict:
                 v = [str(x) for x in v]
         except BadParams as e:
             raise BadParams(f"{cmd.id}.{p.name}: {e}") from None
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError, ArithmeticError, IndexError, KeyError) as e:
             raise BadParams(f"{cmd.id}.{p.name}: {e}") from None
         if p.min is not None and isinstance(v, (int, float)) and v < p.min:
             raise BadParams(f"{cmd.id}.{p.name}: must be >= {p.min}")
@@ -152,13 +152,33 @@ def _body(bodies, name, kinds=(sm.Part,)):
     return b
 
 
+def _reach(part):
+    """How far from a surface a reference point may be and still mean that surface. Generous on purpose: when an earlier step is edited the
+    surfaces move, and a later step must still find 'its' face by nearness; only a point clearly outside the body (more than half its
+    size away) is refused instead of silently acting on some face."""
+    try:
+        bb = part.bbox()
+        return 0.5 * math.dist(tuple(bb.min), tuple(bb.max)) + 1e-4
+    except Exception:
+        return float("inf")
+
+
 def face_at(part, pt):
-    return min(part.faces(), key=lambda f: f.distance_to(tuple(pt)))
+    f = min(part.faces(), key=lambda f: f.distance_to(tuple(pt)))
+    if f.distance_to(tuple(pt)) > _reach(part):
+        raise BadParams(f"no face near {[round(c, 3) for c in pt]}: reference a point on the face (see inspect_body)")
+    return f
 
 
 def edges_at(part, pts):
     es = part.edges()
-    return [min(es, key=lambda e: e.distance_to(tuple(q))) for q in pts]
+    out = []
+    for q in pts:
+        e = min(es, key=lambda e: e.distance_to(tuple(q)))
+        if e.distance_to(tuple(q)) > _reach(part):
+            raise BadParams(f"no edge near {[round(c, 3) for c in q]}: reference a point on the edge (see inspect_body)")
+        out.append(e)
+    return out
 
 
 def _place(shape, at):
@@ -761,6 +781,8 @@ def _loft(B, p):
           P("angle", "float", 360, "", 1, 360)], creates=True)
 def _rev(B, p):
     pts = [tuple(q[:2]) for q in p["points"]]
+    if len(pts) < 2:
+        raise BadParams("need at least 2 profile points")
     if any(r < 0 for r, _ in pts):
         raise BadParams("radius must be >= 0")
     prof = [(0, pts[0][1])] + pts + [(0, pts[-1][1])]
@@ -1131,7 +1153,13 @@ class Document:
             # steps saved before a parameter existed run with its default (documents stay readable as commands grow)
             if any(q.name not in params for q in cmd.params):
                 params = {**{q.name: copy.deepcopy(q.default) for q in cmd.params if q.name not in params}, **params}
-            cmd.run(out, params)
+            try:
+                cmd.run(out, params)
+            except BadParams:
+                raise
+            except (sm.ModelingError, ValueError, ArithmeticError) as e:
+                # whatever the kernel (or a numeric check inside it) refuses is a refusal of these parameters: one kind of error, its reason kept
+                raise BadParams(f"{cmd.label}: {e}") from None
         return out
 
     def rebuild(self, start=0):
