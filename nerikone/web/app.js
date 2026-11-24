@@ -949,6 +949,7 @@ const blocked = k => { const f = S.feas; if (f && !f.pending && f[k] === false) 
 A('edit.fillet', 'フィレット', '編集', () => blocked('fillet') || filletModal(false));
 A('edit.chamfer', '面取り', '編集', () => blocked('chamfer') || filletModal(true));
 A('edit.shell', 'シェル', '編集', () => blocked('shell') || shellModal());
+A('hole.fill', '穴をふさぐ', '編集', () => { const e = S.sel.edges[0]; if (!e) return toast('穴のふちのエッジを選択'); commit('hole.fill', {body: e.body, at: e.mid}); });
 A('edit.duplicate', '複製', '編集', async () => {
   const names = selBodies(); if (!names.length) return toast('ボディを選択');
   const made = [];
@@ -1203,6 +1204,8 @@ function contextActions() {
   const may = (id, ic, label, ok, why) => ok === false ? [id, ic, `${label}（${why}）`, true] : [id, ic, label];
   if (s.faces.length) out.push(['edit.extrude', 'facemove', '面を動かす'], may('edit.shell', 'shell', 'シェル', fz.shell, 'このボディには不可'));
   if (s.edges.length === 1 && !s.faces.length && !s.bodies.length) out.push(['transform.grab', 'move', 'エッジを動かす']);
+  // an edge of a sheet (a surface body) may border a hole: offer to close it with a face
+  if (s.edges.length >= 1 && !s.faces.length && !s.bodies.length && S.doc.bodies[s.edges[0].body]?.kind === 'Shell') out.push(['hole.fill', 'surface', '穴をふさぐ']);
   if (s.edges.length) out.push(may('edit.fillet', 'fillet', 'フィレット', fz.fillet, 'この辺には不可'), may('edit.chamfer', 'chamfer', '面取り', fz.chamfer, 'この辺には不可'));
   // whole-body moves only for selected bodies: with a face or an edge selected, G moves that face or edge
   if (s.bodies.length) out.push(null, ['transform.grab', 'move', '移動'], ['transform.rotate', 'rotate', '回転'], ['transform.scale', 'scale', '拡大縮小'], ['edit.duplicate', 'duplicate', '複製']);
@@ -2530,7 +2533,7 @@ rapply();
 // ------------------------------------------------------------------ tooltips (data-tip, data-key, data-sub)
 const TOOL_JA = {'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
   'sketch.extrude': '多角形を押し出し', 'nurbs.surface': 'NURBS 曲面', 'nurbs.loft': 'ロフト', 'nurbs.revolve': '回転体', 'nurbs.sweep': 'スイープ',
-  'body.mirror': 'ミラー', 'body.pattern': '配列複写', 'body.split': '平面で分割', 'body.offset': '太らせる / 痩せさせる', 'face.draft': '抜き勾配', 'body.section': '断面を取り出す',
+  'body.mirror': 'ミラー', 'hole.fill': '穴をふさぐ', 'body.pattern': '配列複写', 'body.split': '平面で分割', 'body.offset': '太らせる / 痩せさせる', 'face.draft': '抜き勾配', 'body.section': '断面を取り出す',
   'sketch.offset': 'オフセット', 'sketch.line': 'ライン', 'sketch.path': 'ライン', 'sketch.polygon': '多角形', 'sketch.rect': '矩形', 'sketch.circle': '円', 'region.extrude': '押し出し', 'face.extrude': 'プッシュ/プル',
   'face.move': '面を動かす', 'dim.add': '寸法', 'face.split': '面を分割', 'edge.move': 'エッジを移動', 'edge.fillet': 'フィレット', 'edge.chamfer': '面取り', 'body.shell': 'シェル', 'body.boolean': 'ブーリアン', 'body.transform': '移動・回転・拡大', 'body.duplicate': '複製',
   'body.material': '素材と色', 'face.color': '面の色', 'face.delete': '面を削除', 'body.delete': 'ボディを削除', 'file.import': '読み込み'};

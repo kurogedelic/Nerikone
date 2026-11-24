@@ -838,6 +838,56 @@ def _cha(B, p):
     B[p["body"]] = b.chamfer(edges_at(b, p["edges"]), p["length"])
 
 
+@command("hole.fill", "Fill hole", "Modify",
+         "Close an open hole in a sheet with a face. `at` is a point on one of the edges around the hole (the free edges of "
+         "the sheet that join up into a closed loop). A flat loop gets a flat face, any other loop a smooth patch. When the "
+         "sheet then closes around a volume, it becomes a solid.",
+         [P("body", "body", ""), P("at", "face_ref", None, "a point on an edge of the hole")])
+def _fillhole(B, p):
+    b = _body(B, p["body"], (sm.Shell,))
+    free = [e for e in b.edges() if len(e.faces()) == 1]
+    if not free:
+        raise BadParams("this sheet has no open edges: there is no hole to fill")
+    at = tuple(p["at"])
+    key = lambda v: tuple(round(c, 5) for c in v)  # noqa: E731
+    seed = min(free, key=lambda e: e.distance_to(at))
+    loop, used = [seed], {id(seed)}
+    end = key(seed.end)
+    start = key(seed.start)
+    for _ in range(len(free)):
+        if end == start:
+            break
+        nxt = next((e for e in free if id(e) not in used and (key(e.start) == end or key(e.end) == end)), None)
+        if nxt is None:
+            break
+        used.add(id(nxt))
+        loop.append(nxt)
+        end = key(nxt.end) if key(nxt.start) == end else key(nxt.start)
+    if end != start:
+        raise BadParams("the open edges around that point do not form a closed loop")
+    pts = [tuple(v) for e in loop for v in (e.start, e.end)]
+    flat = False
+    if len(pts) >= 3:
+        o = sm.Vector(*pts[0])
+        n = None
+        for q in pts[1:]:
+            for r in pts[2:]:
+                c = (sm.Vector(*q) - o).cross(sm.Vector(*r) - o)
+                if c.length > 1e-9:
+                    n = c.normalized()
+                    break
+            if n is not None:
+                break
+        size = max(math.dist(pts[0], q) for q in pts[1:]) or 1.0
+        flat = n is not None and all(abs((sm.Vector(*q) - o).dot(n)) < 1e-6 * size for q in pts)
+    try:
+        patch = sm.make_face(sm.Wire(loop)) if flat else sm.fill(loop)
+        out = sm.stitch([b, patch])
+    except sm.ModelingError as e:
+        raise BadParams(f"the hole could not be filled: {e}") from None
+    B[p["body"]] = out
+
+
 @command("body.shell", "Shell", "Modify", "Hollow the body to walls of `thickness`, opening the face nearest `open_at`.",
          [P("body", "body", ""), P("thickness", "float", 0.1, "", 1e-6), P("open_at", "face_ref", None)])
 def _shell(B, p):
