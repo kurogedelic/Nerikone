@@ -31,6 +31,9 @@ On Render's free plan: sign in with GitHub, New > Blueprint, pick this repositor
 
 ## Use
 
+`examples/house.nrk` is a small house built on variables (open it, then change W, D, H ... in the inspector with
+nothing selected: walls, openings and roof follow).
+
 - `P` push/pull: click a flat face or a sketched shape, move, click (or type a distance); pulling adds, pushing cuts,
   double-click repeats the last distance. Tap Option to toggle `+`: the starting face stays as edges (stack a new segment). In move (`G`), `+` copies instead (right: fillet, left: chamfer) / a body directly.
 - `A` add · `G` `R` `S` move / rotate / scale (`X` `Y` `Z` to lock an axis, type a number) · `Alt+R` `Alt+C` `Alt+P` sketch shapes

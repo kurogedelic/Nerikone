@@ -1,0 +1,337 @@
+{
+ "format": "nerikone/1",
+ "units": "m",
+ "features": [
+  {
+   "id": 1,
+   "cmd": "var.set",
+   "params": {
+    "var": "W",
+    "value": 8.0
+   },
+   "suppressed": false
+  },
+  {
+   "id": 2,
+   "cmd": "var.set",
+   "params": {
+    "var": "D",
+    "value": 6.0
+   },
+   "suppressed": false
+  },
+  {
+   "id": 3,
+   "cmd": "var.set",
+   "params": {
+    "var": "H",
+    "value": 2.7
+   },
+   "suppressed": false
+  },
+  {
+   "id": 4,
+   "cmd": "var.set",
+   "params": {
+    "var": "T",
+    "value": 0.15
+   },
+   "suppressed": false
+  },
+  {
+   "id": 5,
+   "cmd": "var.set",
+   "params": {
+    "var": "slab",
+    "value": 0.2
+   },
+   "suppressed": false
+  },
+  {
+   "id": 6,
+   "cmd": "var.set",
+   "params": {
+    "var": "eave",
+    "value": 0.4
+   },
+   "suppressed": false
+  },
+  {
+   "id": 7,
+   "cmd": "var.set",
+   "params": {
+    "var": "rise",
+    "value": 1.8
+   },
+   "suppressed": false
+  },
+  {
+   "id": 8,
+   "cmd": "body.box",
+   "params": {
+    "length": "=W",
+    "width": "=D",
+    "height": "=slab",
+    "at": [
+     0.0,
+     0.0,
+     "=slab/2"
+    ],
+    "name": "Slab"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 9,
+   "cmd": "body.box",
+   "params": {
+    "length": "=W",
+    "width": "=D",
+    "height": "=H",
+    "at": [
+     0.0,
+     0.0,
+     "=slab+H/2"
+    ],
+    "name": "Walls"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 10,
+   "cmd": "body.box",
+   "params": {
+    "length": "=W-2*T",
+    "width": "=D-2*T",
+    "height": "=H",
+    "at": [
+     0.0,
+     0.0,
+     "=slab+H/2"
+    ],
+    "name": "Inner"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 11,
+   "cmd": "body.boolean",
+   "params": {
+    "kind": "cut",
+    "target": "Walls",
+    "tools": [
+     "Inner"
+    ],
+    "keep_tools": false
+   },
+   "suppressed": false
+  },
+  {
+   "id": 12,
+   "cmd": "body.box",
+   "params": {
+    "length": 0.9,
+    "width": "=T*3",
+    "height": 2.0,
+    "at": [
+     "=-W/5",
+     "=-D/2",
+     "=slab+1"
+    ],
+    "name": "Door"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 13,
+   "cmd": "body.box",
+   "params": {
+    "length": 1.2,
+    "width": "=T*3",
+    "height": 1.1,
+    "at": [
+     "=W/5",
+     "=-D/2",
+     "=slab+1.5"
+    ],
+    "name": "Win"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 14,
+   "cmd": "body.pattern",
+   "params": {
+    "body": "Win",
+    "kind": "linear",
+    "count": 2,
+    "step": [
+     0.0,
+     "=D",
+     0.0
+    ],
+    "axis_origin": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "axis_dir": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "angle": 360.0,
+    "merge": false,
+    "name": "Pattern1"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 15,
+   "cmd": "body.box",
+   "params": {
+    "length": "=T*3",
+    "width": 1.2,
+    "height": 1.1,
+    "at": [
+     "=W/2",
+     0.0,
+     "=slab+1.5"
+    ],
+    "name": "SideWin"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 16,
+   "cmd": "body.mirror",
+   "params": {
+    "body": "SideWin",
+    "origin": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "normal": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "merge": false,
+    "name": "Mirror1"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 17,
+   "cmd": "body.boolean",
+   "params": {
+    "kind": "cut",
+    "target": "Walls",
+    "tools": [
+     "Door",
+     "Win",
+     "Pattern1_2",
+     "SideWin",
+     "Mirror1"
+    ],
+    "keep_tools": false
+   },
+   "suppressed": false
+  },
+  {
+   "id": 18,
+   "cmd": "sketch.polygon",
+   "params": {
+    "origin": [
+     0.0,
+     "=-D/2-eave",
+     0.0
+    ],
+    "normal": [
+     0.0,
+     -1.0,
+     0.0
+    ],
+    "xdir": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "on_body": "",
+    "points": [
+     [
+      "=-W/2-eave",
+      "=slab+H"
+     ],
+     [
+      "=W/2+eave",
+      "=slab+H"
+     ],
+     [
+      0.0,
+      "=slab+H+rise"
+     ]
+    ],
+    "constraints": [],
+    "name": "Roof"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 19,
+   "cmd": "region.extrude",
+   "params": {
+    "body": "Roof",
+    "amount": "=-(D+2*eave)",
+    "mode": "new",
+    "target": "",
+    "keep_face": false
+   },
+   "suppressed": false
+  },
+  {
+   "id": 20,
+   "cmd": "body.box",
+   "params": {
+    "length": 0.6,
+    "width": 0.6,
+    "height": "=rise+0.4",
+    "at": [
+     "=W/4",
+     "=D/6",
+     "=slab+H+rise/2+0.2"
+    ],
+    "name": "Chimney"
+   },
+   "suppressed": false
+  },
+  {
+   "id": 21,
+   "cmd": "body.boolean",
+   "params": {
+    "kind": "union",
+    "target": "Roof",
+    "tools": [
+     "Chimney"
+    ],
+    "keep_tools": false
+   },
+   "suppressed": false
+  },
+  {
+   "id": 22,
+   "cmd": "body.boolean",
+   "params": {
+    "kind": "union",
+    "target": "Slab",
+    "tools": [
+     "Walls"
+    ],
+    "keep_tools": false
+   },
+   "suppressed": false
+  }
+ ],
+ "blobs": {}
+}

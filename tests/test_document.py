@@ -1,5 +1,6 @@
 """The document: timeline, undo/redo, parametric edits, failures that change nothing, persistence, measuring."""
 import json
+import pathlib
 import os
 import signal
 
@@ -281,3 +282,12 @@ def test_failures_are_not_remembered():
     d.rebuild(0)
     assert not d.errors and "Imp" in d.bodies
     del K.BLOBS["f" * 16]
+
+
+def test_example_house_opens_and_follows_its_variables():
+    d = K.Document()
+    d.load_json(json.loads((pathlib.Path(__file__).parent.parent / "examples" / "house.nrk").read_text()))
+    assert not d.errors and d.units == "m" and sorted(d.bodies) == ["Roof", "Slab"]
+    h = next(f for f in d.features if f["cmd"] == "var.set" and f["params"]["var"] == "H")
+    d.update(h["id"], {"value": 3.0})
+    assert not d.errors and d.bodies["Slab"].bbox().max.z == approx(3.2)
