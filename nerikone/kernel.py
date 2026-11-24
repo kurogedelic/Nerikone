@@ -17,6 +17,7 @@ import json
 import math
 import os
 import tempfile
+import threading
 import zipfile
 import io
 from dataclasses import dataclass, field
@@ -163,22 +164,99 @@ def _reach(part):
         return float("inf")
 
 
+# ---- stable references
+# A step names faces and edges by a point on them. When an earlier step is edited the surfaces move, and the face
+# nearest the old point may be another one (a pulled top that is now lower than a side). So when a step runs for the
+# first time (or its own parameters change) it also records what it picked: a face's kind and, if flat, which way it
+# faces; an edge's kind and the faces on either side of it. Later rebuilds look for the point's face among the faces
+# that still match that record, and fall back to plain nearness when none does (a rotated body, an old document).
+_REFS = threading.local()  # .ctx = {"hints": {...}, "record": {...} | None} while Document._apply runs a step
+
+
+def _ref_key(kind, pt):
+    return kind + ",".join(repr(float(c)) for c in pt)
+
+
+def _face_sig(f):
+    s = {"type": f.geom_type}
+    if f.is_planar:
+        try:
+            s["n"] = _v(f.normal_at())
+        except Exception:  # a degenerate face has no normal: its kind is all we keep
+            pass
+    return s
+
+
+def _face_matches(f, sig):
+    if f.geom_type != sig.get("type"):
+        return False
+    n = sig.get("n")
+    if n is None:
+        return True
+    if not f.is_planar:
+        return False
+    try:
+        v = f.normal_at()
+    except Exception:
+        return False
+    return v.x * n[0] + v.y * n[1] + v.z * n[2] > 0.999
+
+
+def _edge_sig(e):
+    try:
+        faces = [_face_sig(f) for f in e.faces()]
+    except Exception:
+        faces = []
+    return {"type": e.geom_type, "faces": faces}
+
+
+def _edge_matches(e, sig):
+    if e.geom_type != sig.get("type"):
+        return False
+    want = list(sig.get("faces") or [])
+    if not want:
+        return True
+    try:
+        have = list(e.faces())
+    except Exception:
+        return False
+    for w in want:  # each recorded neighbour matched by a different face
+        hit = next((i for i, f in enumerate(have) if _face_matches(f, w)), None)
+        if hit is None:
+            return False
+        del have[hit]
+    return True
+
+
+def _resolve(items, pt, part, kind, matches, sig_of, what):
+    pt = tuple(pt)
+    ctx = getattr(_REFS, "ctx", None)
+    key = _ref_key(kind, pt)
+    reach = _reach(part)
+    best = min(items, key=lambda x: x.distance_to(pt))
+    pick = best
+    sig = ctx["hints"].get(key) if ctx else None
+    if sig:
+        pool = [x for x in items if matches(x, sig)]
+        if pool:
+            cand = min(pool, key=lambda x: x.distance_to(pt))
+            # a match far beyond the point's own surroundings means the record is stale (the body turned): nearness wins
+            if cand.distance_to(pt) <= reach:
+                pick = cand
+    if pick is best and best.distance_to(pt) > reach:
+        raise BadParams(f"no {what} near {[round(c, 3) for c in pt]}: reference a point on the {what} (see inspect_body)")
+    if ctx and ctx["record"] is not None:
+        ctx["record"][key] = sig_of(pick)
+    return pick
+
+
 def face_at(part, pt):
-    f = min(part.faces(), key=lambda f: f.distance_to(tuple(pt)))
-    if f.distance_to(tuple(pt)) > _reach(part):
-        raise BadParams(f"no face near {[round(c, 3) for c in pt]}: reference a point on the face (see inspect_body)")
-    return f
+    return _resolve(part.faces(), pt, part, "f", _face_matches, _face_sig, "face")
 
 
 def edges_at(part, pts):
     es = part.edges()
-    out = []
-    for q in pts:
-        e = min(es, key=lambda e: e.distance_to(tuple(q)))
-        if e.distance_to(tuple(q)) > _reach(part):
-            raise BadParams(f"no edge near {[round(c, 3) for c in q]}: reference a point on the edge (see inspect_body)")
-        out.append(e)
-    return out
+    return [_resolve(es, q, part, "e", _edge_matches, _edge_sig, "edge") for q in pts]
 
 
 def _place(shape, at):
@@ -1145,7 +1223,8 @@ class Document:
     def bodies(self) -> dict:
         return self.states[-1] if self.states else {}
 
-    def _apply(self, bodies, f):
+    def _apply(self, bodies, f, record=False):
+        """Run step `f` on `bodies`. With `record`, the faces and edges it picks are kept in f["refs"] (see face_at)."""
         out = dict(bodies)
         if not f.get("suppressed"):
             cmd = COMMANDS[f["cmd"]]
@@ -1153,6 +1232,8 @@ class Document:
             # steps saved before a parameter existed run with its default (documents stay readable as commands grow)
             if any(q.name not in params for q in cmd.params):
                 params = {**{q.name: copy.deepcopy(q.default) for q in cmd.params if q.name not in params}, **params}
+            refs = f.get("refs")
+            _REFS.ctx = {"hints": refs if isinstance(refs, dict) else {}, "record": {} if record else None}
             try:
                 cmd.run(out, params)
             except BadParams:
@@ -1160,9 +1241,17 @@ class Document:
             except (sm.ModelingError, ValueError, ArithmeticError) as e:
                 # whatever the kernel (or a numeric check inside it) refuses is a refusal of these parameters: one kind of error, its reason kept
                 raise BadParams(f"{cmd.label}: {e}") from None
+            finally:
+                ctx, _REFS.ctx = _REFS.ctx, None
+            if record:
+                if ctx["record"]:
+                    f["refs"] = ctx["record"]
+                else:
+                    f.pop("refs", None)
         return out
 
-    def rebuild(self, start=0):
+    def rebuild(self, start=0, record=None):
+        """Evaluate the steps from `start` on. The step whose id is `record` keeps what it picks (its own inputs changed)."""
         start = max(0, min(start, len(self.states)))
         self.states = self.states[:start]
         for i in range(start, len(self.features)):
@@ -1170,7 +1259,7 @@ class Document:
             prev = self.states[-1] if self.states else {}
             self.errors.pop(f["id"], None)
             try:
-                self.states.append(self._apply(prev, f))
+                self.states.append(self._apply(prev, f, record=f["id"] == record))
             except Exception as e:  # a failed feature passes the model through, like any CAD timeline
                 self.errors[f["id"]] = f"{type(e).__name__}: {e}"
                 self.states.append(prev)
@@ -1195,7 +1284,7 @@ class Document:
         cmd = COMMANDS.get(cmd_id) or _unknown(cmd_id)
         p = coerce(cmd, self._auto_name(cmd, dict(params)))
         f = {"id": self.next_id, "cmd": cmd_id, "params": p, "suppressed": False}
-        new = self._apply(self.bodies, f)  # raises on failure
+        new = self._apply(self.bodies, f, record=True)  # raises on failure
         self._push_undo()
         self.next_id += 1
         self.features.append(f)
@@ -1218,7 +1307,7 @@ class Document:
             f["suppressed"] = bool(suppressed)
         self._push_undo()
         self.features[i] = f
-        self.rebuild(i)
+        self.rebuild(i, record=fid if params is not None else None)
         return f
 
     def limit(self, cmd_id, params, param, lo, hi, direction=None, iters=10):

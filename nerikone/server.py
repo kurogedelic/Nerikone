@@ -12,6 +12,7 @@ import os
 import pathlib
 import secrets
 import sys
+import subprocess
 import tempfile
 import threading
 import time
@@ -317,6 +318,12 @@ def watch_and_reload():
             compile((here / "server.py").read_text(encoding="utf-8"), "server.py", "exec")
         except SyntaxError as e:
             print(f"reload: not restarting, syntax error: {e}", flush=True)
+            seen = now
+            continue
+        # a file caught half-way through an edit can parse and still fail on import: try it in a separate process first
+        chk = subprocess.run([sys.executable, "-c", "import kernel, server"], cwd=here, capture_output=True, text=True)
+        if chk.returncode != 0:
+            print("reload: not restarting, the new code does not import:\n" + chk.stderr.strip().splitlines()[-1], flush=True)
             seen = now
             continue
         keep = pathlib.Path(tempfile.gettempdir()) / f"nerikone-reload-{os.getpid()}.nrk"

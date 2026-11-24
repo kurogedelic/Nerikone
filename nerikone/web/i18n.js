@@ -515,6 +515,7 @@ const EN = {
   '球': 'Sphere',
   '幅': 'width',
   '色': 'Colour',
+  '設定': 'Settings',
   'ボディを 2 つ以上選択': 'Select two or more bodies',
   'ボディか面を選択': 'Select a body or a face',
   '平らな面を 1 つ選択': 'Select one flat face',

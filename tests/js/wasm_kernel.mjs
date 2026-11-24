@@ -38,6 +38,9 @@ assert len(d.features)==1`,
 for fmt in ('stl','step','obj','glb','3mf'):
     data=K.export(d,fmt); e=K.Document(); e.execute('file.import',{'blob':K.add_blob(data),'format':fmt,'name':'I'})
     bb=e.bodies['I'].bbox(); assert [round(x,4) for x in bb.min]==[0,1,2], (fmt, list(bb.min))`,
+  references: `d=K.Document(); d.execute('body.box',{}); d.execute('face.extrude',{'body':'Box1','at':[0,0,1],'amount':1}); d.execute('edge.fillet',{'body':'Box1','edges':[[1,0,2]],'radius':0.2})
+d.update(2,{'amount':3}); r=[f.center() for f in d.bodies['Box1'].faces() if not f.is_planar]
+assert not d.errors and len(r)==1 and abs(r[0].z-3.93)<0.01, [(c.x,c.y,c.z) for c in r]`,
   api: `code,_,data,_=api.handle('POST','/api/exec',{},json.dumps({'cmd':'body.sphere','params':{}}).encode())
 assert code==200 and 'Sphere1' in json.loads(data)['scene']
 code,_,data,_=api.handle('POST','/api/exec',{},b'{"cmd":"body.box","params":{"length":-1}}'); assert code==400`,
