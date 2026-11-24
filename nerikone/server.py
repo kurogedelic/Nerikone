@@ -32,7 +32,7 @@ DESKTOP = os.environ.get("NERIKONE_DESKTOP") == "1" and not PUBLIC  # the deskto
 BASE = _arg("--base", "").rstrip("/")
 WEB = (pathlib.Path(__file__).parent / "web").resolve()
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2",
-         ".woff": "font/woff", ".ttf": "font/ttf", ".svg": "image/svg+xml", ".json": "application/json"}
+         ".woff": "font/woff", ".ttf": "font/ttf", ".svg": "image/svg+xml", ".json": "application/json", ".png": "image/png"}
 
 # Limits (public mode). The kernel runs one operation at a time, so these keep one visitor from starving others.
 MAX_UPLOAD = 25 * 1024 * 1024        # bytes per imported file

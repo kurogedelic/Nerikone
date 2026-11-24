@@ -38,9 +38,9 @@ for f in WEB.iterdir():
         shutil.copy2(f, OUT / f.name)
 html = (WEB / "index.html").read_text(encoding="utf-8")
 html = html.replace('<script type="module" src="app.js"></script>', '<script type="module" src="local.js"></script>\n<script type="module" src="app.js"></script>')
-html = html.replace("</head>", '<link rel="manifest" href="manifest.webmanifest">\n<meta name="theme-color" content="#17181a">\n<link rel="icon" href="icon.png">\n</head>')
+html = html.replace("</head>", '<link rel="manifest" href="manifest.webmanifest">\n<meta name="theme-color" content="#17181a">\n</head>')
 (OUT / "index.html").write_text(html, encoding="utf-8")
-for n in ("worker.js", "local.js", "manifest.webmanifest", "icon.png"):
+for n in ("worker.js", "local.js", "manifest.webmanifest"):
     shutil.copy2(LOCAL / n, OUT / n)
 # Python side
 (OUT / "py").mkdir()
