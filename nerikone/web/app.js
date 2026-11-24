@@ -1020,7 +1020,7 @@ function showTab(t, toggle) { // open the panel (or, from a button, fold it when
 const tabShown = t => !document.body.classList.contains('no-rcol') && !rstate.shut.includes(t);
 const clearColor = () => R.setClearColor(document.documentElement.dataset.theme === 'light' ? 0xe8e9ec : 0x000000);
 A('view.theme', 'テーマ（ダーク / ライト）', '表示', () => { const light = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = light ? 'light' : 'dark';
-  try { localStorage.setItem('nerikone.theme', light ? 'light' : 'dark'); } catch { /* session only */ } clearColor(); buildGrid(); renderTop(); });
+  try { localStorage.setItem('nerikone.theme', light ? 'light' : 'dark'); } catch { /* session only */ } clearColor(); buildGrid(); renderTop(); refresh(); });
 try { if (localStorage.getItem('nerikone.theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch { /* default dark */ }
 clearColor();
 A('view.lite', '軽量表示（ぼかしなし）', '表示', () => { document.body.classList.toggle('lite'); try { localStorage.setItem('nerikone.lite', document.body.classList.contains('lite') ? '1' : '0'); } catch { /* session only */ } renderTop(); });
@@ -1200,6 +1200,7 @@ const ADD_ITEMS = [{header: '基本形状'}, 'body.box', 'body.cylinder', 'body.
   {header: 'NURBS'}, 'nurbs.surface', 'nurbs.loft', 'nurbs.revolve', 'nurbs.sweep'];
 function addMenu(e) {
   const fromKey = e?.type === 'keydown', r = canvas.getBoundingClientRect();
+  if (fromKey && (S.tool || S.modal || S.sk)) return; // the A key adds only with the select tool (the add button still works)
   const atMouse = fromKey && S.mouse && S.mouse.x > r.left && S.mouse.x < r.right && S.mouse.y > r.top && S.mouse.y < r.bottom;
   let x, y, ground = null;
   if (atMouse) {
@@ -2169,7 +2170,9 @@ const gridDot = new T.Points(new T.BufferGeometry(), new T.PointsMaterial({color
 gridDot.renderOrder = 15; gridDot.visible = false; scene.add(gridDot);
 function showGridDot(p) { gridDot.visible = !!p; if (p) gridDot.geometry.setFromPoints([p]); }
 function onPlane(e, pl) { // mouse -> point on the sketch plane (vertex snap projected onto it; grid snap; Shift: neither)
-  const sp = e.shiftKey ? (showSnap(null), null) : snapPoint(e);
+  let sp = e.shiftKey ? (showSnap(null), null) : snapPoint(e);
+  // once drawing, a corner or an edge off the sketch plane does not snap: pressed onto the plane it would land somewhere else
+  if (S.sk && sp?.snap && !nearPlane(pl, sp.p)) { showSnap(null); midHint.visible = false; sp = null; }
   let p = sp?.snap ? sp.p.clone() : (setRay(e), ray.ray.intersectPlane(new T.Plane().setFromNormalAndCoplanarPoint(pl.n, pl.o), new T.Vector3()));
   if (!p) return null;
   p.addScaledVector(pl.n, -p.clone().sub(pl.o).dot(pl.n));
@@ -2239,6 +2242,24 @@ function settlePlane(e) {
   const k = S.sk; if (!k?.pending || k.pts.length !== 1) return;
   const alt = planeUnder(e);
   if (onPlaneOf(alt, k.pts[0]) && (alt.on_body !== k.plane.on_body || Math.abs(alt.n.dot(k.plane.n)) < 0.999)) { k.plane = withBasis(alt); k.dir = null; }
+  // the pointer on a corner or an edge that is off this plane (a corner is shared by several faces, and the one under
+  // the pointer may be another): take the flat face that holds both the first point and that one
+  const sp = e.shiftKey ? null : snapPoint(e);
+  if (sp?.snap && !nearPlane(k.plane, sp.p)) { const f = faceThrough(k.pts[0], sp.p); if (f) { k.plane = withBasis(f); k.dir = null; } }
+}
+const nearPlane = (pl, p) => Math.abs(pl.n.dot(p.clone().sub(pl.o))) < 1e-4 * Math.max(1, pl.o.length(), p.length());
+function faceThrough(a, b) { // a flat face of a solid whose plane holds both points (or null)
+  const v0 = new T.Vector3();
+  for (const m of visibleFaces()) {
+    const u = m.userData;
+    if (!u.planar || !u.normal || S.doc.bodies[u.body]?.kind !== 'Part') continue;
+    const n = V(u.normal); if (!(n.lengthSq() > 1e-12)) continue; n.normalize();
+    const pos = m.geometry.attributes.position; if (!pos?.count) continue;
+    v0.fromBufferAttribute(pos, 0).applyMatrix4(m.matrixWorld);
+    const pl = {o: v0.clone(), n};
+    if (nearPlane(pl, a) && nearPlane(pl, b)) return {o: a.clone(), n, on_body: u.body};
+  }
+  return null;
 }
 function startPlane(e) {
   const pl = withBasis(planeUnder(e)), sp = e.shiftKey ? null : snapPoint(e);
@@ -2499,17 +2520,18 @@ const dimText = d => { const u = S.doc.units || 'mm', p = d.kind === 'radius' ? 
   return `${p}${fmtN(d.value)} ${u}${d.kind === 'area' ? '²' : ''}`; };
 const spriteCache = new Map();
 function dimSprite(text) {
-  let hit = spriteCache.get(text);
+  const light = document.documentElement.dataset.theme === 'light', key = (light ? 'L' : 'D') + text;
+  let hit = spriteCache.get(key);
   if (!hit) {
     const c = document.createElement('canvas'), g = c.getContext('2d'), fs = 56;
     g.font = `700 ${fs}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif`;
     const w = Math.ceil(g.measureText(text).width) + 44; c.width = w; c.height = fs + 36;
     g.font = `700 ${fs}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif`;
-    g.fillStyle = 'rgba(13,14,16,.88)'; g.beginPath(); g.roundRect(0, 0, c.width, c.height, 18); g.fill();
-    g.strokeStyle = 'rgba(230,232,236,.55)'; g.lineWidth = 3; g.stroke();
-    g.fillStyle = '#f1f3f6'; g.textBaseline = 'middle'; g.fillText(text, 22, c.height / 2 + 2);
+    g.fillStyle = light ? 'rgba(255,255,255,.92)' : 'rgba(13,14,16,.88)'; g.beginPath(); g.roundRect(0, 0, c.width, c.height, 18); g.fill();
+    g.strokeStyle = light ? 'rgba(0,0,0,.18)' : 'rgba(230,232,236,.55)'; g.lineWidth = 3; g.stroke();
+    g.fillStyle = light ? '#1d1f23' : '#f1f3f6'; g.textBaseline = 'middle'; g.fillText(text, 22, c.height / 2 + 2);
     const tex = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace;
-    hit = {tex, aspect: c.width / c.height}; spriteCache.set(text, hit);
+    hit = {tex, aspect: c.width / c.height}; spriteCache.set(key, hit);
   }
   const m = new T.SpriteMaterial({map: hit.tex, depthTest: false, transparent: true, toneMapped: false});
   const sp = new T.Sprite(m); sp.userData.aspect = hit.aspect; return sp;

@@ -470,3 +470,7 @@ button:hover .pic .hole,.mi:hover .pic .hole{transform:scale(1)}                
 :root[data-theme=light] kbd{background:#0000000d;color:var(--fg)}
 
 #stepcard .thumb svg{width:56px;height:36px;color:var(--fg)}#stepcard .thumb .dm{display:none}#stepcard .thumb .pic{width:28px;height:28px}
+/* floating labels (tooltips, the measuring readout, snap and dimension labels) follow the theme */
+:root[data-theme=light] #hud,:root[data-theme=light] #tip,:root[data-theme=light] #snaplabel,:root[data-theme=light] .rlabel,
+:root[data-theme=light] .dlabel{background:#ffffffeb;color:var(--fg);border-color:var(--line)}
+:root[data-theme=light] #stepcard .thumb{background:#0000000d}
