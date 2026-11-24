@@ -474,3 +474,12 @@ button:hover .pic .hole,.mi:hover .pic .hole{transform:scale(1)}                
 :root[data-theme=light] #hud,:root[data-theme=light] #tip,:root[data-theme=light] #snaplabel,:root[data-theme=light] .rlabel,
 :root[data-theme=light] .dlabel{background:#ffffffeb;color:var(--fg);border-color:var(--line)}
 :root[data-theme=light] #stepcard .thumb{background:#0000000d}
+/* sketch constraints in the inspector */
+.cons .crow{display:flex;align-items:center;gap:6px;min-height:28px;padding:0 2px}
+.cons .ck{font-weight:600;min-width:4.5em}
+.cons .cref{color:var(--dim);font-size:var(--fs-s);flex:1}
+.cons .cval{display:flex;align-items:center;gap:4px}
+.cons .cval input{width:78px;font-variant-numeric:tabular-nums}
+.cons .cval span{color:var(--dim);font-size:var(--fs-s)}
+.cons h5 .sub{margin-left:auto;color:var(--dim);font-weight:400;font-size:var(--fs-s)}
+.cons .hint{color:var(--dim);font-size:var(--fs-s);padding:4px 2px}

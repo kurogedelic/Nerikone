@@ -438,6 +438,8 @@ function preview(url, body) {
 
 // Kernel messages are precise but long; show a short Japanese hint first (the full text stays in the console).
 const HINTS = [
+  [/constraints cannot all hold/, '拘束どうしがぶつかっています。どれかを外すか、値を変えてください'],
+  [/is not an arc/, 'その辺は円弧ではありません'],
   [/chamfer: .*angle that changes along it/, 'この辺は面の角度が場所によって変わるため、面取りできません。フィレットを使ってください（エッジを右へドラッグ、または Ctrl+B）'],
   [/radius (is|may be) too large|rounds .* would overlap|setback|too large for/, '大きすぎます。値を小さくしてください'],
   [/thicken|offset this sheet|curvature too tight/, '曲がりがきつく、この厚みは付けられません。厚みを小さくしてください'],
@@ -1526,6 +1528,11 @@ function openForm(id) { S.form = id; S.feature = null; showTab('insp'); renderPa
 const KIND_JA = {Part: 'ソリッド', Shell: 'サーフェス', Mesh: 'メッシュ', Sketch: 'スケッチ', Dimension: '寸法'};
 function inspectorFeature() { // the timeline step shown: the selected one, else what made the one selected body
   if (S.feature) return S.doc.features.find(f => f.id === S.feature);
+  if (S.sel.edges.length && !S.sel.faces.length && !S.sel.bodies.length) { // edges of a sketch (or of a solid pushed from one, in its plane): that sketch, to constrain
+    const names = new Set(S.sel.edges.map(e => e.body));
+    if (names.size === 1) { const n = [...names][0], f = S.doc.features.findLast(x => x.params.name === n && SKETCH_CMDS.has(x.cmd) && !x.suppressed);
+      if (f && selectedSegments(f).length) return f; }
+  }
   const n = S.sel.bodies.length === 1 && !S.sel.faces.length && !S.sel.edges.length ? S.sel.bodies[0] : null;
   return n ? S.doc.features.findLast(f => f.params.name === n) : null;
 }
@@ -1533,7 +1540,7 @@ function renderInspector() {
   const head = $('insphead'), body = $('inspbody'), u = S.doc.units || 'mm';
   const f = S.form ? null : inspectorFeature(), bodies = selBodies(), s = S.sel;
   // keep what is being typed: do not rebuild while the same thing is shown and a field has focus
-  const key = JSON.stringify([S.form, f?.id, f?.params, f?.error, bodies, s.faces.length, s.edges.length, S.version, u]);
+  const key = JSON.stringify([S.form, f?.id, f?.params, f?.error, bodies, s.faces.length, s.edges.map(e => e.body + e.ei), S.version, u]);
   if (body.contains(document.activeElement) && key === S.inspKey) return;
   S.inspKey = key;
   const sec = (id, title, ic, html, extra = '') => `<div class="isec" id="${id}"><h5 data-tip="${esc(title)}" aria-label="${esc(title)}">${icon(ic)}${extra}</h5>${html}</div>`;
@@ -1699,7 +1706,8 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
     const name = DIM_JA[q.name] || q.name;
     return `<div class="field ${simple(q) ? '' : 'wide'}"><label ${q.type === 'float' || q.type === 'int' ? 'class="scrub"' : ''} data-tip="${esc(q.name)}" data-sub="${esc(q.doc || '')}">${esc(name)}</label>${inputFor(q)}</div>`;
   };
-  const shown = cmd.params.filter(q => q.type !== 'blob' && !(live && q.name === 'name'));
+  const cp = live && SKETCH_CMDS.has(cmd.id) ? conPanel(feature) : null;
+  const shown = cmd.params.filter(q => q.type !== 'blob' && !(live && q.name === 'name') && !(cp && q.name === 'constraints'));
   // the main dimensions of a shape are typed on a drawing of it, at the edge they measure; the rest stay in the list
   const dyn = BUILD[cmd.id], numVals = () => Object.fromEntries(cmd.params.filter(q => q.type === 'float' || q.type === 'int').map(q => { const inp = $('p_' + q.name); return [q.name, parseFloat(inp ? inp.value : (values[q.name] ?? q.default))]; }));
   const dg = dyn ? dyn(Object.fromEntries(cmd.params.filter(q => q.type === 'float' || q.type === 'int').map(q => [q.name, +(values[q.name] ?? q.default)]))) : DIAGRAMS[cmd.id];
@@ -1710,6 +1718,7 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
   el.innerHTML = (feature?.error ? `<div class="err">${icon('warn')} ${esc(friendly(feature.error))}</div>` : '') +
     (diagram || `<h5 data-tip="${esc(cmd.doc)}">${icon('settings')} パラメータ</h5>`) +
     shown.filter(q => simple(q) && !onDiagram.has(q.name)).map(field).join('') +
+    (cp ? cp.html : '') +
     (shown.some(q => !simple(q)) ? `<details class="more"><summary>データ</summary>${shown.filter(q => !simple(q)).map(field).join('')}</details>` : '') +
     `<div class="dfoot">${live ? `<button class="txt" id="p_sup">${icon(feature.suppressed ? 'eye' : 'eye-off')} ${feature.suppressed ? '抑制を解除' : '抑制'}</button><button class="txt" id="p_del">${icon('trash')} 削除</button>`
       : `<button class="txt" id="p_cancel">取り消し</button><button class="pri txt" id="p_go">${icon('check')} ${label}</button>`}</div><div id="p_err" class="err"></div>`;
@@ -1737,8 +1746,14 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
     return out;
   };
   const go = () => { try { onSubmit(read()); } catch (e) { $('p_err').textContent = e.message; } };
+  if (cp) {
+    const cons = () => JSON.parse(JSON.stringify(feature.params.constraints || []));
+    el.querySelectorAll('[data-cval]').forEach(i => i.addEventListener('change', e => { e.stopPropagation(); const c = cons(), k = +i.dataset.cval; c[k][c[k].length - 1] = +i.value; setConstraints(feature, c); }));
+    el.querySelectorAll('[data-cdel]').forEach(b => b.onclick = () => { const c = cons(); c.splice(+b.dataset.cdel, 1); updateFeature(feature.id, {constraints: c}); });
+    el.querySelectorAll('[data-cadd]').forEach(b => b.onclick = () => setConstraints(feature, [...cons(), cp.adds[+b.dataset.cadd]]));
+  }
   if (live) {
-    el.querySelectorAll('input,select,textarea').forEach(i => i.addEventListener('change', go)); // parametric: rebuild on edit
+    el.querySelectorAll('input:not([data-cval]),select,textarea').forEach(i => i.addEventListener('change', go)); // parametric: rebuild on edit
     el.querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') i.blur(); }));
     $('p_sup').onclick = () => updateFeature(feature.id, null, {suppressed: !feature.suppressed});
     $('p_del').onclick = () => { S.feature = null; updateFeature(feature.id, null, {delete: true}); };
@@ -2319,6 +2334,7 @@ function sketchClick(e) {
     // The line goes on: more points make a polyline, the start point closes it into a region. Ended with a double-click or Enter,
     // a line that runs from the border of a face to its border splits that face along it (see finishSketch).
     (S.sk.snaps ||= [!!S.sk.startSnap]).push(!!q.snap);
+    rememberTypedLength(S.sk);
     S.sk.pts.push(q.p); S.sk.typed = ''; S.sk.lock = null; sketchPreview(q.p); renderStatus(); return;
   }
   shapePoints(q.p); finishSketch();
@@ -2338,7 +2354,7 @@ function sketchKey(e) {
       if (!k.dir) { toast('向きを先に決める'); return true; }
       reaim();
       if (S.skCur && atStart(S.skCur) && canClose()) { k.typed = ''; finishSketch(); return true; } // the typed length lands on the start
-      if (S.skCur && S.skCur.distanceTo(k.pts.at(-1)) > 1e-6) k.pts.push(S.skCur.clone());
+      if (S.skCur && S.skCur.distanceTo(k.pts.at(-1)) > 1e-6) { rememberTypedLength(k); k.pts.push(S.skCur.clone()); }
       k.typed = ''; k.lock = null; reaim(); renderStatus(); return true;
     }
     if (S.tool === 'line' && k.pts.length >= 2 && !k.bulges?.some(Boolean)) { shapePoints(S.skCur); finishSketch(true); } // Enter ends an open line
@@ -2349,6 +2365,75 @@ function sketchKey(e) {
   if (e.key === 'Backspace') { e.preventDefault(); if (k.typed) k.typed = k.typed.slice(0, -1); else if (k.arcEnd) k.arcEnd = null; else if (isPath(S.tool) && k.pts.length > 1) { k.pts.pop(); if (k.bulges) k.bulges.length = Math.min(k.bulges.length, k.pts.length - 1); } reaim(); renderStatus(); return true; }
   if (/^[0-9.,\- ]$/.test(e.key) && S.tool !== 'poly' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); k.typed += e.key; reaim(); return true; }
   return false;
+}
+// ---- sketch constraints (kernel: constraints.py). Drawing records what it was told: a segment that snapped onto the
+// plane's X or Y stays horizontal / vertical, a typed length stays that long; the inspector lists and edits them.
+const SKETCH_CMDS = new Set(['sketch.polygon', 'sketch.path', 'sketch.line']);
+const CON_JA = {horizontal: '水平', vertical: '垂直', length: '長さ', radius: '半径', parallel: '平行', perpendicular: '直角', equal: '同じ長さ',
+  angle: '角度', distance: '距離', x: 'X 位置', y: 'Y 位置', fix: '固定'};
+const CON_SEGS = {horizontal: 1, vertical: 1, length: 1, radius: 1, parallel: 2, perpendicular: 2, equal: 2, angle: 2};
+const CON_VAL = new Set(['length', 'radius', 'angle', 'distance', 'x', 'y']);
+function rememberTypedLength(k) { const t = parseFloat(k.typed); if (S.tool === 'line' && isFinite(t) && t > 0) (k.lens ||= {})[k.pts.length - 1] = t; }
+function inferConstraints(pts, closed, bulges, lens) {
+  const out = [], n = pts.length, m = closed ? n : n - 1, tol = 1e-7 * Math.max(1, ...pts.flat().map(Math.abs));
+  for (let i = 0; i < m; i++) {
+    if (bulges?.[i]) continue;
+    const a = pts[i], b = pts[(i + 1) % n], du = b[0] - a[0], dv = b[1] - a[1];
+    if (Math.abs(dv) <= tol && Math.abs(du) > tol) out.push(['horizontal', i]);
+    else if (Math.abs(du) <= tol && Math.abs(dv) > tol) out.push(['vertical', i]);
+    if (lens?.[i]) out.push(['length', i, +lens[i].toFixed(6)]);
+  }
+  return out;
+}
+function sketchFrame(f) { // the plane a sketch step was drawn on, as the kernel builds it (Y = normal x X)
+  const p = f.params, o = V(p.origin), n = V(p.normal).normalize(), u = V(p.xdir);
+  u.sub(n.clone().multiplyScalar(u.dot(n))).normalize();
+  return {o, n, u, v: n.clone().cross(u)};
+}
+const sketchPts = f => f.solved?.points || f.params.points.map(q => q.slice(0, 2));
+function segInfo(f) { // segments of a sketch step in plane coordinates: [a, b, bulge]
+  const P = sketchPts(f), closed = f.cmd !== 'sketch.line', n = P.length, out = [];
+  for (let i = 0; i < (closed ? n : n - 1); i++) out.push([P[i], P[(i + 1) % n], f.params.bulges?.[i] || 0]);
+  return out;
+}
+function selectedSegments(f) { // which of the step's segments the selected edges are (edges of its body lying in its plane)
+  const fr = sketchFrame(f), segs = segInfo(f), name = f.params.name, out = [];
+  const size = Math.max(1, ...sketchPts(f).flat().map(Math.abs));
+  for (const e of S.sel.edges) {
+    if (e.body !== name || !e.mid) continue;
+    const d = V(e.mid).sub(fr.o); if (Math.abs(d.dot(fr.n)) > 1e-4 * size) continue;
+    const x = d.dot(fr.u), y = d.dot(fr.v);
+    let best = -1, bd = Infinity;
+    segs.forEach(([a, b, k], i) => {
+      const mx = (a[0] + b[0]) / 2 + (b[1] - a[1]) * k / 2, my = (a[1] + b[1]) / 2 - (b[0] - a[0]) * k / 2; // the arc's middle (straight: the chord's)
+      const dd = Math.hypot(x - mx, y - my); if (dd < bd) { bd = dd; best = i; }
+    });
+    if (best >= 0 && bd < 1e-3 * size && !out.includes(best)) out.push(best);
+  }
+  return out;
+}
+function conPanel(f) {
+  const cons = f.params.constraints || [], segs = segInfo(f), sel = selectedSegments(f), u = S.doc.units || 'mm';
+  const dof = f.solved ? f.solved.dof : sketchPts(f).length * 2;
+  const ref = c => { const ns = CON_SEGS[c[0]] || 0, idx = c.slice(1, 1 + (ns || (c[0] === 'distance' ? 2 : 1)));
+    return (ns ? '辺 ' : '点 ') + idx.map(i => i + 1).join(', '); };
+  const rows = cons.map((c, k) => `<div class="crow" data-ck="${k}"><span class="ck">${esc(CON_JA[c[0]] || c[0])}</span><span class="cref">${ref(c)}</span>` +
+    (CON_VAL.has(c[0]) ? `<label class="scrub cval"><input type="number" step="${c[0] === 'angle' ? 1 : 0.1}" data-cval="${k}" value="${+(+c.at(-1)).toFixed(6)}"><span>${c[0] === 'angle' ? '°' : u}</span></label>` : '<span class="grow"></span>') +
+    `<button class="ib" data-cdel="${k}" data-tip="この拘束を外す" aria-label="この拘束を外す">${icon('close')}</button></div>`).join('');
+  const len = i => { const [a, b] = segs[i]; return Math.hypot(b[0] - a[0], b[1] - a[1]); };
+  const ang = (i, j) => { const d = s => [segs[s][1][0] - segs[s][0][0], segs[s][1][1] - segs[s][0][1]], a = d(i), b = d(j);
+    return Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) * 180 / Math.PI; };
+  const adds = sel.length === 1 ? [['horizontal', sel[0]], ['vertical', sel[0]], ['length', sel[0], +len(sel[0]).toFixed(4)],
+    ...(segs[sel[0]][2] ? [['radius', sel[0], +(len(sel[0]) * (1 + segs[sel[0]][2] ** 2) / (4 * Math.abs(segs[sel[0]][2]))).toFixed(4)]] : [])]
+    : sel.length === 2 ? [['parallel', ...sel], ['perpendicular', ...sel], ['equal', ...sel], ['angle', ...sel, +ang(...sel).toFixed(2)]] : [];
+  const addRow = adds.length ? `<div class="ibtns">${adds.map((c, i) => `<button data-cadd="${i}">${esc(CON_JA[c[0]])}</button>`).join('')}</div>`
+    : `<div class="hint">スケッチの辺を 1 本か 2 本選ぶと、拘束を足せます</div>`;
+  return {html: `<div class="isec cons"><h5 data-tip="拘束" aria-label="拘束">${icon('ruler')} <span class="sub">${dof ? `自由度 ${dof}` : '完全に決まっています'}</span></h5>${rows}${addRow}</div>`, adds};
+}
+async function setConstraints(f, cons, label = '拘束') {
+  try { await post('api/feature', {id: f.id, params: {constraints: cons}, preview: true}); } // a conflict is refused before it lands
+  catch (e) { reportError(e.message, label); return; }
+  updateFeature(f.id, {constraints: cons});
 }
 async function finishSketch(open = false) {
   const k = S.sk; if (!k) return;
@@ -2361,6 +2446,7 @@ async function finishSketch(open = false) {
   else if (open && S.tool === 'line') { if (k.pts.length < 2) return; cmd = 'sketch.line'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5)))}; }
   else { if (k.pts.length < 3) return; cmd = 'sketch.polygon'; params = {...base, points: k.pts.map(p => uvOf(p, pl).map(x => +x.toFixed(5)))}; }
   for (const key of ['x', 'y', 'width', 'height', 'radius']) if (key in params) params[key] = +params[key].toFixed(5);
+  if (SKETCH_CMDS.has(cmd)) { const c = inferConstraints(params.points, cmd !== 'sketch.line', params.bulges, k.lens); if (c.length) params.constraints = c; }
   S.sk = null; sketchPreview(); hud('');
   const d = await commit(cmd, params);
   if (!d) return;

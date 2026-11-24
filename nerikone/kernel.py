@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 import smlibpy as sm
 
+import constraints
 import meshio
 import vrml
 
@@ -129,6 +130,8 @@ def coerce(cmd: Command, params: dict) -> dict:
                     raise BadParams("non-finite")
             elif p.type == "bodies":
                 v = [str(x) for x in v]
+            elif p.type == "constraints":
+                v = constraints.normalise(v)
         except BadParams as e:
             raise BadParams(f"{cmd.id}.{p.name}: {e}") from None
         except (TypeError, ValueError, ArithmeticError, IndexError, KeyError) as e:
@@ -377,13 +380,41 @@ def _scirc(B, p):
 
 
 @command("sketch.polygon", "Polygon", "Sketch", "A closed polygonal region on a plane (points in plane coordinates).",
-         [*PLANE, P("points", "points", [[0, 0], [1, 0], [0.5, 1]], "[x, y] outline")], creates=True)
+         [*PLANE, P("points", "points", [[0, 0], [1, 0], [0.5, 1]], "[x, y] outline"), P("constraints", "constraints", [], "[kind, index..., value?] each: horizontal / vertical / length / radius s, "
+            "parallel / perpendicular / equal / angle s t, distance i j, x / y / fix i (s: segment i runs from point i to the next)")], creates=True)
 def _spoly(B, p):
-    pts = _clean_outline([tuple(q[:2]) for q in p["points"]])
+    pts = _clean_outline(_solved(p, closed=True))
     try:
         B[p["name"]] = _region(sm.Polygon(*pts, align=None).on(_plane(p)), p)
     except sm.ModelingError as e:
         raise BadParams(f"these points do not make a region: {e}") from None
+
+
+def _solved(p, closed, bulges=()):
+    """The drawn points moved as little as possible so that the step's constraints hold (constraints.py)."""
+    pts = [tuple(q[:2]) for q in p["points"]]
+    if not p.get("constraints"):
+        return pts
+    try:
+        return constraints.solve(pts, p["constraints"], closed=closed, bulges=bulges)[0]
+    except constraints.ConstraintError as e:
+        raise BadParams(str(e)) from None
+
+
+SKETCH_SOLVED = {"sketch.polygon": True, "sketch.path": True, "sketch.line": False}  # command -> closed outline
+
+
+def sketch_solution(f):
+    """Solved points and degrees of freedom left of a constrained sketch step (for the viewer), or None."""
+    closed = SKETCH_SOLVED.get(f.get("cmd"))
+    p = f.get("params", {})
+    if closed is None or not p.get("constraints"):
+        return None
+    try:
+        pts, dof = constraints.solve([q[:2] for q in p["points"]], p["constraints"], closed=closed, bulges=p.get("bulges", ()))
+    except constraints.ConstraintError:
+        return None
+    return {"points": [[round(a, 9), round(b, 9)] for a, b in pts], "dof": dof}
 
 
 def _clean_outline(pts):
@@ -473,17 +504,19 @@ def _outline(pts, bulges):
          "`bulges[i]` bends the segment from point i to the next into an arc (sagitta / half chord: 0 straight, 1 a "
          "half circle; positive bows to the right of the direction of travel).",
          [*PLANE, P("points", "points", [[0, 0], [2, 0], [2, 1], [0, 1]], "[x, y] corners"),
-          P("bulges", "floats", [0, 1, 0, 0], "one per segment; missing ones are straight")], creates=True)
+          P("bulges", "floats", [0, 1, 0, 0], "one per segment; missing ones are straight"), P("constraints", "constraints", [], "[kind, index..., value?] each: horizontal / vertical / length / radius s, "
+            "parallel / perpendicular / equal / angle s t, distance i j, x / y / fix i (s: segment i runs from point i to the next)")], creates=True)
 def _spath(B, p):
-    B[p["name"]] = _region(_outline([tuple(q[:2]) for q in p["points"]], p["bulges"]).on(_plane(p)), p)
+    B[p["name"]] = _region(_outline(_solved(p, closed=True, bulges=p["bulges"]), p["bulges"]).on(_plane(p)), p)
 
 
 @command("sketch.line", "Line", "Sketch",
          "An open polyline of straight segments on a plane (2 or more points, plane coordinates). It is not a region: "
          "it has edges only, to measure from, snap to or use as a guide.",
-         [*PLANE, P("points", "points", [[0, 0], [2, 0]], "[x, y] points, in order")], creates=True)
+         [*PLANE, P("points", "points", [[0, 0], [2, 0]], "[x, y] points, in order"), P("constraints", "constraints", [], "[kind, index..., value?] each: horizontal / vertical / length / radius s, "
+            "parallel / perpendicular / equal / angle s t, distance i j, x / y / fix i (s: segment i runs from point i to the next)")], creates=True)
 def _sline(B, p):
-    pts = [tuple(q[:2]) for q in p["points"]]
+    pts = _solved(p, closed=False)
     if len(pts) < 2:
         raise BadParams("a line needs at least 2 points")
     segs = []
@@ -1381,7 +1414,8 @@ class Document:
         return {}
 
     def summary(self):
-        return {"features": [{**f, "label": COMMANDS[f["cmd"]].label, "error": self.errors.get(f["id"])}
+        return {"features": [{**f, "label": COMMANDS[f["cmd"]].label, "error": self.errors.get(f["id"]),
+                              **({"solved": s} if (s := sketch_solution(f)) else {})}
                              for f in self.features],
                 "bodies": {n: {**body_info(b), **self._appearance(n)} for n, b in self.bodies.items()},
                 "units": self.units, "can_undo": bool(self.undo_stack), "can_redo": bool(self.redo_stack)}
