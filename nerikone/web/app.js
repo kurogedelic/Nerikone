@@ -1203,11 +1203,17 @@ function addMenu(e) {
       ? {icon: cmdIcon(it), label: TOOL_JA[it] || S.cmds[it].label, tile: true, short: (TOOL_JA[it] || S.cmds[it].label).replace('を押し出し', '押し出し'), run: () => create(it, ground)} : it),
     null, {icon: 'import', label: 'ファイルから読み込み (STEP / IGES / STL / OBJ / GLB / 3MF / WRL)', key: KM.shortcutOf('file.import'), run: () => $('file').click()}]);
 }
+// A new shape is placed with its bottom on the ground (the kernel's `at` is the shape's centre, so the centre goes up by half its height)
+function restHeight(id) {
+  const d = n => +(S.cmds[id].params.find(p => p.name === n)?.default ?? 0);
+  return {'body.box': d('height') / 2, 'body.cylinder': d('height') / 2, 'body.cone': d('height') / 2, 'body.sphere': d('radius'), 'body.torus': d('minor_radius')}[id] ?? 0;
+}
 function create(id, ground) {
-  const box = boxOf(Object.keys(S.groups)), params = {};
+  const box = boxOf(Object.keys(S.groups)), params = {}, z = +restHeight(id).toFixed(4);
   if (S.cmds[id].params.some(p => p.name === 'at')) {
-    if (ground) params.at = [+ground.x.toFixed(2), +ground.y.toFixed(2), 0];
-    else if (!box.isEmpty()) params.at = [+(box.max.x + 1.8).toFixed(2), 0, 0]; // next to the others, not on top
+    if (ground) params.at = [+ground.x.toFixed(2), +ground.y.toFixed(2), z];
+    else if (!box.isEmpty()) params.at = [+(box.max.x + 1.8).toFixed(2), 0, z]; // next to the others, not on top
+    else params.at = [0, 0, z];
   }
   commit(id, params);
 }
