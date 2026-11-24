@@ -2,6 +2,7 @@
 // Fukiai (MIT; vendor/fukiai) is the first choice: FK maps an icon name to a Fukiai glyph. Whatever Fukiai does not
 // have yet falls back to Tabler Icons (MIT; loaded in index.html) through ICONS below. Draw the missing ones in
 // Fukiai, run tools/sync-fukiai.py, and add them to FK; ICONS then never needs them.
+import {PICTO} from './pictos.js';
 import {FUKIAI} from './fukiai.js';
 export const FK = {
   // already in Fukiai
@@ -58,6 +59,7 @@ export function glyphFor(name) {
   return code ? {fk: true, ch: String.fromCodePoint(parseInt(code, 16))} : {fk: false, tabler: ICONS[name] || name};
 }
 export const icon = (name, cls = '') => {
+  if (PICTO[name]) return PICTO[name].replace('class="pic"', `class="pic ti ${cls}"`);
   const g = glyphFor(name);
   return g.fk ? `<i class="ti fk ${cls}" aria-hidden="true">${g.ch}</i>` : `<i class="ti ti-${g.tabler} ${cls}" aria-hidden="true"></i>`;
 };

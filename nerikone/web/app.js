@@ -64,6 +64,7 @@ const entryText = e => `[${fmtTime(e.time)}] ${e.kind.toUpperCase()} ${e.text}${
 async function copyText(t) { try { await navigator.clipboard.writeText(t); toast('コピーしました'); } catch { prompt('コピーしてください', t); } }
 function openConsole(show) {
   const el = $('console'); el.hidden = show === undefined ? !el.hidden : !show;
+  const bi = $('buildinfo'); if (bi) bi.textContent = 'ビルド ' + (document.querySelector('meta[name=nerikone-build]')?.content || 'dev');
   if (!el.hidden) S.unseenErr = 0;
   renderConsole(); resize();
 }
@@ -1010,6 +1011,7 @@ function showTab(t, toggle) { // open the panel (or, from a button, fold it when
 const tabShown = t => !document.body.classList.contains('no-rcol') && !rstate.shut.includes(t);
 A('view.lite', '軽量表示（ぼかしなし）', '表示', () => { document.body.classList.toggle('lite'); try { localStorage.setItem('nerikone.lite', document.body.classList.contains('lite') ? '1' : '0'); } catch { /* session only */ } renderTop(); });
 try { if (localStorage.getItem('nerikone.lite') === '1') document.body.classList.add('lite'); } catch { /* default */ }
+A('view.strip', '履歴バー（横）', '表示', () => { document.body.classList.toggle('no-strip'); try { localStorage.setItem('nerikone.strip', document.body.classList.contains('no-strip') ? '0' : '1'); } catch { /* session only */ } renderStrip(); renderTop(); });
 A('sound.toggle', '効果音', '表示', () => { setSound(!soundOn()); if (soundOn()) sfx('toggle'); });
 A('panel.column', '右パネル表示', '表示', () => { document.body.classList.toggle('no-rcol'); rsave(); savePanes(); renderTop(); });
 A('panel.inspector', '情報パネル表示', '表示', () => showTab('insp', true));
@@ -1092,6 +1094,7 @@ function snapMenu(e) {
 const SNAP_STEPS = [0.1, 0.25, 0.5, 1, 2, 5, 10], SNAP_LENS = [0.01, 0.05, 0.1, 0.5, 1], SNAP_ANGLES = [1, 5, 15, 45];
 A('snap.toggle', 'スナップの入 / 切', '表示', () => { S.snap.on = !S.snap.on; saveSnap(); renderTop(); S.inspKey = null; renderInspector(); toast(S.snap.on ? 'スナップ: 入' : 'スナップ: 切'); });
 const below = e => { const r = (e?.currentTarget || e?.target?.closest?.('button') || $('top')).getBoundingClientRect(); return [r.left, r.bottom + 4]; };
+const buildNo = () => document.querySelector('meta[name=nerikone-build]')?.content || 'dev';
 function docMenu(e) {
   const [x, y] = below(e), u = S.doc.units || 'mm', K = id => KM.shortcutOf(id);
   showMenu(x, y, [
@@ -1107,6 +1110,7 @@ function docMenu(e) {
     ...[['mm', 'ミリメートル'], ['cm', 'センチメートル'], ['m', 'メートル'], ['in', 'インチ']].map(([k, l]) => ({icon: k === u ? 'check' : 'blank', label: `${l} (${k})`, run: () => setUnits(k)})),
     null,
     {icon: 'keyboard', label: 'ショートカット一覧と変更', key: K('help.keymap'), run: () => run('help.keymap')},
+    null, {header: `Nerikone  ビルド ${buildNo()}`},
   ]);
 }
 async function setUnits(u) { try { const d = await post('api/settings', {units: u}); S.doc = d.doc; S.version = d.version; renderPanels(); } catch (err) { reportError(err.message, '単位'); } }
@@ -1121,6 +1125,7 @@ function viewMenu(e) {
     {icon: S.workPlane ? 'check' : 'workplane', label: '作業平面を設定…', run: () => run('plane.set')},
     ...(S.workPlane ? [{icon: 'blank', label: '作業平面を地面に戻す', run: () => run('plane.clear')}] : []),
     {icon: 'eye', label: 'すべて表示', key: K('hide.unhide'), run: () => run('hide.unhide')},
+    {icon: document.body.classList.contains('no-strip') ? 'blank' : 'check', label: '履歴バー（横）', run: () => run('view.strip')},
     {icon: document.body.classList.contains('lite') ? 'check' : 'blank', label: '軽量表示（ぼかしなし）', run: () => run('view.lite')},
     {icon: soundOn() ? 'check' : 'blank', label: '効果音', run: () => run('sound.toggle')},
     {icon: 'blank', label: `効果音の大きさ: ${volumeLabel()}`, run: () => { nextVolume(); sfx('click'); }},
@@ -1188,7 +1193,7 @@ function addMenu(e) {
     ground = ray.ray.intersectPlane(new T.Plane(new T.Vector3(0, 0, 1), 0), new T.Vector3());
   } else { const b = (e?.target?.closest?.('button') || $('addbtn') || $('tools')).getBoundingClientRect(); [x, y] = b.top < 60 ? [b.left, b.bottom + 4] : [b.right + 6, b.top]; }
   showMenu(x, y, [...ADD_ITEMS.map(it => typeof it === 'string'
-      ? {icon: cmdIcon(it), label: TOOL_JA[it] || S.cmds[it].label, run: () => create(it, ground)} : it),
+      ? {icon: cmdIcon(it), label: TOOL_JA[it] || S.cmds[it].label, tile: true, short: (TOOL_JA[it] || S.cmds[it].label).replace('を押し出し', '押し出し'), run: () => create(it, ground)} : it),
     null, {icon: 'import', label: 'ファイルから読み込み (STEP / IGES / STL / OBJ / GLB / 3MF / WRL)', key: KM.shortcutOf('file.import'), run: () => $('file').click()}]);
 }
 function create(id, ground) {
@@ -1300,7 +1305,15 @@ function contextMenu(e) {
 let menuItems = null, menuHl = -1; // the open menu's items, for arrow keys / Enter
 function showMenu(x, y, items) {
   const m = $('menu');
-  m.innerHTML = items.map((it, i) => it?.header ? `<div class="mh">${esc(it.header)}</div>` : it ? `<div class="mi ${it.dis ? 'dis' : ''}" data-i="${i}">${icon(it.icon)}<span>${esc(it.label)}</span><span class="k">${esc(it.key || '')}</span></div>` : '<div class="msep"></div>').join('');
+  // items with tile:true are laid out as a grid of thumbnails (a big pictogram over a short label), the rest as rows
+  let html = '', run = '';
+  const flush = () => { if (run) html += `<div class="mgrid">${run}</div>`; run = ''; };
+  items.forEach((it, i) => {
+    if (it?.tile) { run += `<div class="mi tile" data-i="${i}" data-tip="${esc(it.label)}">${icon(it.icon)}<span>${esc(it.short || it.label)}</span></div>`; return; }
+    flush();
+    html += it?.header ? `<div class="mh">${esc(it.header)}</div>` : it ? `<div class="mi ${it.dis ? 'dis' : ''}" data-i="${i}">${icon(it.icon)}<span>${esc(it.label)}</span><span class="k">${esc(it.key || '')}</span></div>` : '<div class="msep"></div>';
+  });
+  flush(); m.innerHTML = html;
   m.hidden = false; menuItems = items; menuHl = -1; sfx('open');
   m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px'; m.style.top = Math.max(8, Math.min(y, innerHeight - m.offsetHeight - 8)) + 'px';
   m.querySelectorAll('[data-i]').forEach(el => el.onclick = () => { closeMenus(); items[+el.dataset.i].run(); });
@@ -1397,26 +1410,10 @@ addEventListener('drop', e => {
   importFiles([...e.dataTransfer.files]);
 });
 
-function renderPanels() {
-  renderTop();
-  const kindIcon = {Part: 'part', Shell: 'shell_body', Mesh: 'mesh', Dimension: 'dimension', Sketch: 'rectangle', Wire: 'pencil'};
-  $('outliner').innerHTML = Object.entries(S.doc.bodies).map(([n, b]) =>
-    `<div class="orow ${S.sel.bodies.includes(n) ? 'sel' : ''} ${S.hidden.has(n) ? 'hidden' : ''}" data-body="${esc(n)}" title="${esc(b.kind)}">
-      ${icon(kindIcon[b.kind] || 'part')}<span class="name">${esc(n)}</span><button class="swatch" data-mat="${esc(n)}" data-tip="素材と色" style="--c:${esc(b.color || b.mat_color || '#9aa7bd')}"></button><span class="vol">${b.volume != null ? b.volume.toFixed(2) : ''}</span>
-      <button data-eye="${esc(n)}" data-tip="表示 / 非表示" data-key="${esc(KM.shortcutOf('hide.selected'))}">${icon(S.hidden.has(n) ? 'eye-off' : 'eye')}</button></div>`).join('') || '<div class="orow none">ボディはまだありません</div>';
-  $('ocount').textContent = Object.keys(S.doc.bodies).length || '';
-  $('outliner').querySelectorAll('[data-body]').forEach(el => el.onclick = e => {
-    const n = el.dataset.body;
-    if (e.target.closest('[data-mat]')) { materialPopover(e.target.closest('[data-mat]'), [n]); return; }
-    if (e.target.closest('[data-eye]')) { S.hidden.has(n) ? S.hidden.delete(n) : S.hidden.add(n); buildVis(); return; }
-    S.mode = 'body'; select({kind: 'body', body: n}, e.shiftKey);
-  });
-  $('outliner').querySelectorAll('[data-body]').forEach(el => el.ondblclick = e => { if (!e.target.closest('button')) frame([el.dataset.body]); });
-  $('hcount').textContent = S.doc.features.length || '';
-  $('timeline').innerHTML = S.doc.features.map((f, i) =>
-    `<div class="chip ${f.id === S.feature ? 'sel' : ''} ${f.error ? 'err' : ''} ${f.suppressed ? 'off' : ''}" data-f="${f.id}" data-tip="${esc(f.error ? friendly(f.error) : (TOOL_JA[f.cmd] || f.label))}">
-      <span class="n">${i + 1}</span>${icon(cmdIcon(f))}<small>${esc(TOOL_JA[f.cmd] || f.label)}${f.params.name || f.params.body ? ' · ' + esc(f.params.name || f.params.body) : ''}</small></div>`).join('') || '<div class="none">履歴はまだありません</div>';
-  $('timeline').querySelectorAll('[data-f]').forEach(el => {
+// History, two ways: the list in the right column (details) and a compact strip of icons along the bottom (a click opens the step, the
+// mouse over a chip names it, a red dot marks a step that failed, a faded one is suppressed). The View menu switches the strip on / off.
+function bindFeatures(root) {
+  root.querySelectorAll('[data-f]').forEach(el => {
     const id = +el.dataset.f;
     el.onclick = () => { S.feature = S.feature === id ? null : id; S.form = null; if (S.feature) showTab('insp'); renderPanels(); };
     el.oncontextmenu = e => { e.preventDefault(); const f = S.doc.features.find(x => x.id === id);
@@ -1424,6 +1421,36 @@ function renderPanels() {
         {icon: f.suppressed ? 'eye' : 'eye-off', label: f.suppressed ? '抑制を解除' : '抑制', run: () => updateFeature(id, null, {suppressed: !f.suppressed})},
         null, {icon: 'trash', label: '削除', run: () => updateFeature(id, null, {delete: true})}]); };
   });
+}
+const stripEl = Object.assign(document.createElement('div'), {id: 'tlstrip', className: 'glass', hidden: true}); view.append(stripEl);
+try { if (localStorage.getItem('nerikone.strip') === '0') document.body.classList.add('no-strip'); } catch { /* default: on */ }
+let stripCount = -1;
+function renderStrip() {
+  const on = !document.body.classList.contains('no-strip') && S.doc.features.length > 0;
+  document.body.classList.toggle('tl-strip', on); stripEl.hidden = !on; if (!on) return;
+  stripEl.innerHTML = S.doc.features.map((f, i) => `<button class="tc ${f.id === S.feature ? 'on' : ''} ${f.error ? 'err' : ''} ${f.suppressed ? 'off' : ''}" data-f="${f.id}" data-tip="${esc((i + 1) + '  ' + (f.error ? friendly(f.error) : (TOOL_JA[f.cmd] || f.label)))}" aria-label="${esc(TOOL_JA[f.cmd] || f.label)}">${icon(cmdIcon(f))}</button>`).join('');
+  bindFeatures(stripEl);
+  if (S.doc.features.length !== stripCount) { stripCount = S.doc.features.length; stripEl.scrollLeft = stripEl.scrollWidth; }
+}
+function renderPanels() {
+  renderTop();
+  const kindIcon = {Part: 'part', Shell: 'shell_body', Mesh: 'mesh', Dimension: 'dimension', Sketch: 'rectangle', Wire: 'pencil'};
+  $('outliner').innerHTML = Object.entries(S.doc.bodies).map(([n, b]) =>
+    `<div class="orow ${S.sel.bodies.includes(n) ? 'sel' : ''} ${S.hidden.has(n) ? 'hidden' : ''}" data-body="${esc(n)}" title="${esc(b.kind)}">
+      ${icon(kindIcon[b.kind] || 'part')}<span class="name">${esc(n)}</span><button class="swatch" data-mat="${esc(n)}" data-tip="素材と色" style="--c:${esc(b.color || b.mat_color || '#9aa7bd')}"></button><span class="vol">${b.volume != null ? b.volume.toFixed(2) : ''}</span>
+      <button data-eye="${esc(n)}" data-tip="表示 / 非表示" data-key="${esc(KM.shortcutOf('hide.selected'))}">${icon(S.hidden.has(n) ? 'eye-off' : 'eye')}</button></div>`).join('') || '<div class="orow none">ボディはまだありません</div>';
+  $('outliner').querySelectorAll('[data-body]').forEach(el => el.onclick = e => {
+    const n = el.dataset.body;
+    if (e.target.closest('[data-mat]')) { materialPopover(e.target.closest('[data-mat]'), [n]); return; }
+    if (e.target.closest('[data-eye]')) { S.hidden.has(n) ? S.hidden.delete(n) : S.hidden.add(n); buildVis(); return; }
+    S.mode = 'body'; select({kind: 'body', body: n}, e.shiftKey);
+  });
+  $('outliner').querySelectorAll('[data-body]').forEach(el => el.ondblclick = e => { if (!e.target.closest('button')) frame([el.dataset.body]); });
+  $('timeline').innerHTML = S.doc.features.map((f, i) =>
+    `<div class="chip ${f.id === S.feature ? 'sel' : ''} ${f.error ? 'err' : ''} ${f.suppressed ? 'off' : ''}" data-f="${f.id}" data-tip="${esc(f.error ? friendly(f.error) : (TOOL_JA[f.cmd] || f.label))}">
+      <span class="n">${i + 1}</span>${icon(cmdIcon(f))}<small>${esc(TOOL_JA[f.cmd] || f.label)}${f.params.name || f.params.body ? ' · ' + esc(f.params.name || f.params.body) : ''}</small></div>`).join('') || '<div class="none">履歴はまだありません</div>';
+  renderStrip();
+  bindFeatures($('timeline'));
   renderInspector(); renderCtx(); showHandles(); renderStatus(); renderEmpty(); renderTools();
 }
 // An empty document says how to begin, instead of showing a bare grid.
@@ -1484,8 +1511,7 @@ function renderInspector() {
   if (!S.form && !bodies.length) {
     ic = 'doc'; title = S.docName && S.docName !== 'nerikone' ? S.docName : '名称未設定'; sub = 'ドキュメント';
     const all = Object.values(S.doc.bodies);
-    h += sec('i_doc', 'ドキュメント', 'doc', rows([['ボディ', all.length], ['履歴', `${S.doc.features.length} 手順`]]) +
-      `<div class="irow"><span>単位</span><select id="i_units">${['mm', 'cm', 'm', 'in'].map(k => `<option ${k === u ? 'selected' : ''}>${k}</option>`).join('')}</select></div>`);
+    h += `<div class="isec"><div class="irow"><span>単位</span><select id="i_units">${['mm', 'cm', 'm', 'in'].map(k => `<option ${k === u ? 'selected' : ''}>${k}</option>`).join('')}</select></div></div>`;
     const lb = (id, ic2, label, extra = '') => `<button data-act="${id}" ${extra}>${icon(ic2)} ${esc(label)}</button>`;
     h += sec('i_view', '作業', 'workplane', rows([['作業平面', S.workPlane ? `原点 ${arr(S.workPlane.o).map(fmtN).join(', ')}` : '地面 (Z = 0)'], ['断面表示', S.section ? `${S.section.axis} = ${fmtN(S.section.pos)}` : 'オフ']]) +
       `<div class="ibtns">${lb('plane.set', 'workplane', '作業平面')}${lb('view.section', 'section', '断面', S.section ? 'class="on"' : '')}${all.length > 1 ? lb('measure.info', 'measure', '干渉チェック') : ''}</div><div id="i_measure"></div>`);
@@ -1535,9 +1561,21 @@ function defaultsFromSelection(cmd) {
   if (cmd.id === 'body.pattern' && body) { const sz = boxOf([body]).getSize(new T.Vector3()); p.step = [+(sz.x * 1.5).toFixed(3), 0, 0]; p.axis_origin = [0, 0, 0]; }
   return p;
 }
+// Drawings for the parameter forms: an isometric sketch of the shape; each slot is [parameter, left %, top %] of the box that holds its input.
+const dgSvg = body => `<svg viewBox="0 0 240 150" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const DIAGRAMS = {
+  'body.box': {svg: dgSvg('<path d="M120 22 190 58 120 94 50 58z" fill="currentColor" fill-opacity=".12"/><path d="M50 58v52l70 36 70-36V58M120 94v52" /><path class="dm" d="M196 66v52M44 66v52M126 150l64-33M114 150 56 120"/>'), slots: [['length', 74, 80], ['width', 4, 80], ['height', 78, 34]]},
+  'body.cylinder': {svg: dgSvg('<ellipse cx="120" cy="38" rx="56" ry="20" fill="currentColor" fill-opacity=".12"/><path d="M64 38v70c0 11 25 20 56 20s56-9 56-20V38"/><path class="dm" d="M120 38h56M184 38v90"/>'), slots: [['radius', 66, 12], ['height', 80, 62]]},
+  'body.sphere': {svg: dgSvg('<circle cx="120" cy="75" r="56" fill="currentColor" fill-opacity=".12"/><path d="M64 75c0 11 25 20 56 20s56-9 56-20"/><path class="dm" d="M120 75l40-40"/>'), slots: [['radius', 60, 22]]},
+  'body.cone': {svg: dgSvg('<path d="M120 22 62 108c0 11 26 20 58 20s58-9 58-20z" fill="currentColor" fill-opacity=".12"/><path d="M62 108c0 11 26 20 58 20s58-9 58-20"/><path class="dm" d="M120 108h58M120 22v86M104 22h32"/>'), slots: [['bottom_radius', 64, 80], ['top_radius', 62, 2], ['height', 4, 40]]},
+  'body.torus': {svg: dgSvg('<ellipse cx="120" cy="75" rx="90" ry="48" fill="currentColor" fill-opacity=".1"/><ellipse cx="120" cy="75" rx="38" ry="18"/><path class="dm" d="M120 75h90M30 75h20"/>'), slots: [['major_radius', 70, 62], ['minor_radius', 6, 70]]},
+  'edge.fillet': {svg: dgSvg('<path d="M30 130V60a40 40 0 0 1 40-40h140" stroke-width="2"/><path d="M30 130h180" opacity=".35"/><path class="dm" d="M30 60h40M70 20v40"/>'), slots: [['radius', 36, 66]]},
+  'edge.chamfer': {svg: dgSvg('<path d="M30 130V56l36-36h144" stroke-width="2"/><path d="M30 130h180" opacity=".35"/><path class="dm" d="M30 56h36M66 20v36"/>'), slots: [['length', 36, 66]]},
+  'body.shell': {svg: dgSvg('<path d="M120 20 200 62v52l-80 36-80-36V62z" fill="currentColor" fill-opacity=".08"/><path d="M120 52 168 76v34l-48 22-48-22V76z" fill="currentColor" fill-opacity=".14"/><path class="dm" d="M168 76l32-14"/>'), slots: [['thickness', 70, 24]]},
+};
 function renderForm(el, cmd, values, onSubmit, label, live, feature) {
   const bodies = Object.keys(S.doc.bodies), simple = q => ['float', 'int', 'bool', 'enum', 'body', 'vec3', 'str'].includes(q.type);
-  const field = q => {
+  const inputFor = q => {
     const v = values[q.name] ?? q.default, id = 'p_' + q.name;
     let input;
     if (q.type === 'float' || q.type === 'int') input = `<input id="${id}" type="number" step="${q.type === 'int' ? 1 : 0.1}" value="${typeof v === 'number' ? +v.toFixed(6) : v}">`;
@@ -1547,13 +1585,20 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
     else if (q.type === 'str' || q.type === 'blob') input = `<input id="${id}" value="${esc(v ?? '')}" ${q.type === 'blob' ? 'readonly' : ''}>`;
     else if (q.type === 'vec3') input = `<div class="vec">${[0, 1, 2].map(k => `<input id="${id}_${k}" type="number" step="0.1" value="${v?.[k] ?? 0}" title="${'XYZ'[k]}">`).join('')}</div>`;
     else input = `<textarea id="${id}">${esc(JSON.stringify(v))}</textarea>`;
+    return input;
+  };
+  const field = q => {
     const name = DIM_JA[q.name] || q.name;
-    return `<div class="field ${simple(q) ? '' : 'wide'}"><label data-tip="${esc(q.name)}" data-sub="${esc(q.doc || '')}">${esc(name)}</label>${input}</div>`;
+    return `<div class="field ${simple(q) ? '' : 'wide'}"><label ${q.type === 'float' || q.type === 'int' ? 'class="scrub"' : ''} data-tip="${esc(q.name)}" data-sub="${esc(q.doc || '')}">${esc(name)}</label>${inputFor(q)}</div>`;
   };
   const shown = cmd.params.filter(q => q.type !== 'blob' && !(live && q.name === 'name'));
+  // the main dimensions of a shape are typed on a drawing of it, at the edge they measure; the rest stay in the list
+  const dg = DIAGRAMS[cmd.id], onDiagram = new Set(dg ? dg.slots.map(s => s[0]).filter(n => shown.some(q => q.name === n)) : []);
+  const diagram = dg && onDiagram.size ? `<div class="diag">${dg.svg}${dg.slots.filter(s => onDiagram.has(s[0])).map(([n, x, y]) => { const q = shown.find(z => z.name === n);
+    return `<label class="slot scrub" style="left:${x}%;top:${y}%" data-tip="${esc(n)}"><span>${esc(DIM_JA[n] || n)}</span>${inputFor(q)}</label>`; }).join('')}</div>` : '';
   el.innerHTML = (feature?.error ? `<div class="err">${icon('warn')} ${esc(friendly(feature.error))}</div>` : '') +
-    `<h5 data-tip="${esc(cmd.doc)}">${icon('settings')} パラメータ</h5>` +
-    shown.filter(simple).map(field).join('') +
+    (diagram || `<h5 data-tip="${esc(cmd.doc)}">${icon('settings')} パラメータ</h5>`) +
+    shown.filter(q => simple(q) && !onDiagram.has(q.name)).map(field).join('') +
     (shown.some(q => !simple(q)) ? `<details class="more"><summary>データ</summary>${shown.filter(q => !simple(q)).map(field).join('')}</details>` : '') +
     `<div class="dfoot">${live ? `<button class="txt" id="p_sup">${icon(feature.suppressed ? 'eye' : 'eye-off')} ${feature.suppressed ? '抑制を解除' : '抑制'}</button><button class="txt" id="p_del">${icon('trash')} 削除</button>`
       : `<button class="txt" id="p_cancel">取り消し</button><button class="pri txt" id="p_go">${icon('check')} ${label}</button>`}</div><div id="p_err" class="err"></div>`;
@@ -1583,6 +1628,16 @@ function renderForm(el, cmd, values, onSubmit, label, live, feature) {
   }
 }
 
+// Drag a number's name sideways to change it (Shift: finer); typing in the box works as before. Live forms rebuild on release.
+document.addEventListener('pointerdown', e => {
+  const l = e.target.closest?.('label.scrub'); if (!l || e.target.closest('input,select,textarea') || e.button !== 0) return;
+  const inp = l.querySelector('input[type=number]') || l.parentElement.querySelector('input[type=number]'); if (!inp) return;
+  e.preventDefault();
+  const x0 = e.clientX, v0 = parseFloat(inp.value) || 0, step = parseFloat(inp.step) || 0.1;
+  const mv = ev => { const v = v0 + Math.round((ev.clientX - x0) / 4) * step * (ev.shiftKey ? 0.1 : 1); inp.value = +v.toFixed(6); inp.dispatchEvent(new Event('input', {bubbles: true})); };
+  const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); inp.dispatchEvent(new Event('change', {bubbles: true})); };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up);
+}, true);
 // Axis constraints (X Y Z) live in the header for every tool and operation that has them: the current lock lights up, a second
 // press releases it. Which one applies: a running move / rotate / scale, the line tool while a line is being drawn, the dimension tool.
 function axisCtx() {
@@ -1599,12 +1654,12 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-axbt
 function renderStatus() { // the state only: what tool, what is selected, how many bodies, units (no instructions)
   const n = S.sel.faces.length + S.sel.edges.length + S.sel.bodies.length;
   const toolName = {pushpull: 'プッシュ/プル', ruler: 'ルーラー', dim: '寸法', line: 'ライン', rect: '矩形', circle: '円', poly: '多角形', orbit: 'オービット', pan: 'パン', zoom: 'ズーム'}[S.tool];
-  const info = [toolName ? `<span class="tool">${esc(toolName)}</span>` : `<span>${{edge: 'エッジ', face: '面', body: 'ボディ'}[S.mode] || ''}モード</span>`,
-    n ? `<span>選択 <b>${n}</b></span>` : '', `<span>ボディ <b>${Object.keys(S.doc?.bodies || {}).length}</b></span>`,
+  const info = [toolName ? `<span class="tool">${esc(toolName)}</span>` : '',
+    n ? `<span>選択 <b>${n}</b></span>` : '',
     S.section ? '<span class="tool">断面表示</span>' : '', (S.modal ? S.modal.keep || S.modal.copy : S.plus && S.tool === 'pushpull') ? `<span class="tool">+ ${S.modal?.copy || S.tool !== 'pushpull' ? 'コピー' : '面を残す'}</span>` : '', S.workPlane ? '<span class="tool">作業平面</span>' : '',
     `<span>${esc(S.doc?.units || 'mm')}</span>`].filter(Boolean).join('');
   updateAxisChips();
-  $('status').innerHTML = `<button id="consolebtn" data-act="panel.console" data-tip="コンソール" data-key="${esc(KM.shortcutOf('panel.console'))}">${icon('terminal')}<span class="badge">${S.unseenErr || ''}</span></button><span id="buildid" data-tip="ビルド番号（コードの内容から決まる）">${esc(document.querySelector('meta[name=nerikone-build]')?.content || 'dev')}</span><div class="hints"></div><div class="sinfo">${info}</div>`;
+  $('status').innerHTML = `<button id="consolebtn" data-act="panel.console" data-tip="コンソール" data-key="${esc(KM.shortcutOf('panel.console'))}">${icon('terminal')}<span class="badge">${S.unseenErr || ''}</span></button><div class="hints"></div><div class="sinfo">${info}</div>`;
   $('consolebtn').classList.toggle('alert', !!S.unseenErr);
 }
 
@@ -2729,7 +2784,25 @@ resize(); renderTools(); applyShading();
 await load();
 registerWebMCP();
 if (S.public) setTimeout(() => toast('公開版: 使わないとモデルは消えます'), 1200);
-const tick = () => { orbit.update(); drawNavGizmo(); updateViewLabel(); placeRulerLabels(); placeDimLabels(); sizeDimSprites(); R.render(scene, cam); };
+// The selection's actions sit next to what is selected (just below it, or above when there is no room), not in a fixed place. The tools
+// (push/pull, sketching, dimension, import) keep the bar at the bottom centre.
+function placeCtx() {
+  const bar = $('ctxbar'); if (!bar || bar.hidden) return;
+  const s = S.sel, pts = [];
+  if (S.tool || S.imp || S.modal || !(s.faces.length + s.edges.length + s.bodies.length)) { bar.classList.remove('near'); bar.style.left = bar.style.top = bar.style.bottom = ''; return; }
+  for (const n of s.bodies) { const bb = boxOf([n]); if (!bb.isEmpty()) for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) pts.push(new T.Vector3(x, y, z)); }
+  for (const f of s.faces) if (f.point) pts.push(V(f.point));
+  for (const e of s.edges) if (e.mid) pts.push(V(e.mid));
+  if (!pts.length) { bar.classList.remove('near'); return; }
+  const vr = view.getBoundingClientRect(), sp = pts.map(screenOf);
+  const x0 = Math.min(...sp.map(p => p.x)), x1 = Math.max(...sp.map(p => p.x)), y0 = Math.min(...sp.map(p => p.y)), y1 = Math.max(...sp.map(p => p.y));
+  const w = bar.offsetWidth, h = bar.offsetHeight, gap = 16, margin = 12;
+  const tb = $('tools').offsetParent ? $('tools').getBoundingClientRect().right : vr.left, rc = $('rcol').offsetParent ? $('rcol').getBoundingClientRect().left : vr.right;
+  const left = Math.max(tb + margin + w / 2, Math.min(rc - margin - w / 2, (x0 + x1) / 2));
+  let top = y1 + gap; if (top + h > vr.bottom - margin) top = y0 - gap - h; if (top < vr.top + 56) top = vr.bottom - margin - h;
+  bar.classList.add('near'); bar.style.left = (left - vr.left) + 'px'; bar.style.top = (top - vr.top) + 'px'; bar.style.bottom = 'auto';
+}
+const tick = () => { orbit.update(); placeCtx(); drawNavGizmo(); updateViewLabel(); placeRulerLabels(); placeDimLabels(); sizeDimSprites(); R.render(scene, cam); };
 R.setAnimationLoop(tick);
 window.nerikone = {S, get cam() { return cam; }, orbit, handles, setMode, setRender, setView, frame, run, tick, registerWebMCP}; // debugging / UI tests
 
