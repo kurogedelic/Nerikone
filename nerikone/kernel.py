@@ -755,7 +755,14 @@ def _fext(B, p):
     if abs(p["amount"]) < 1e-9:
         raise BadParams("amount must not be 0")
     prism = sm.extrude(f, p["amount"])
-    out = b.fuse(prism) if p["amount"] > 0 else b.cut(prism)
+    try:
+        out = b.fuse(prism) if p["amount"] > 0 else b.cut(prism)
+    except sm.ModelingError as e:
+        if "touch only along" in str(e) or "not a closed" in str(e):
+            raise BadParams("this face cannot be pushed or pulled on its own: it is one piece of a level that was split into several "
+                            "faces (by earlier keep-face steps), and the kernel cannot join the new block to them. Undo the split "
+                            "steps, or move the whole level (select its faces and use move) instead") from None
+        raise
     if not out.is_valid():
         raise BadParams("the result would not be a closed solid (the cut goes all the way through)")
     if p["keep_face"]:
