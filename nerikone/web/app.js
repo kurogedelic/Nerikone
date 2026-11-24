@@ -1018,7 +1018,7 @@ A('command.repeat', '直前のコマンドを繰り返す', '履歴', () => { if
 A('command.palette', 'コマンド検索', 'アプリ', openPalette);
 A('file.new', '新規', 'ファイル', async () => { if (confirm('新しいドキュメントを作りますか？（取り消しで戻せます）')) { S.framed = false; S.feature = null; applyState(await post('api/new')); } });
 A('file.open', '開く / 読み込み', 'ファイル', () => $('file').click());
-A('file.import', '読み込み (STEP / STL / WRL)', 'ファイル', () => $('file').click());
+A('file.import', '読み込み (STEP / IGES / STL / OBJ / GLB / 3MF / WRL)', 'ファイル', () => $('file').click());
 A('file.save', '保存 (.nrk)', 'ファイル', () => download('nrk'));
 A('file.export', '書き出し…', 'ファイル', e => exportMenu(e));
 A('help.keymap', 'ショートカット一覧と変更', 'アプリ', openKeymap);
@@ -1097,7 +1097,7 @@ function docMenu(e) {
     {icon: 'save', label: '保存', key: K('file.save'), run: () => run('file.save')},
     {icon: 'save', label: '名前を付けて保存…', key: K('file.saveas'), run: () => run('file.saveas')},
     null,
-    {icon: 'import', label: '読み込み (STEP / STL / WRL)…', key: K('file.import'), run: () => run('file.import')},
+    {icon: 'import', label: '読み込み (STEP / IGES / STL / OBJ / GLB / 3MF / WRL)…', key: K('file.import'), run: () => run('file.import')},
     {icon: 'export', label: '書き出し…', key: K('file.export'), run: () => exportMenu({target: $('doctitle')})},
     ...(savedCopy() ? [{icon: 'restore', label: '自動保存から復元', run: () => run('file.restore')}] : []),
     null, {header: `単位（今: ${u}）`},
@@ -1185,7 +1185,7 @@ function addMenu(e) {
   } else { const b = (e?.target?.closest?.('button') || $('addbtn') || $('tools')).getBoundingClientRect(); [x, y] = b.top < 60 ? [b.left, b.bottom + 4] : [b.right + 6, b.top]; }
   showMenu(x, y, [...ADD_ITEMS.map(it => typeof it === 'string'
       ? {icon: cmdIcon(it), label: TOOL_JA[it] || S.cmds[it].label, run: () => create(it, ground)} : it),
-    null, {icon: 'import', label: 'ファイルから読み込み (STEP / STL / WRL)', key: KM.shortcutOf('file.import'), run: () => $('file').click()}]);
+    null, {icon: 'import', label: 'ファイルから読み込み (STEP / IGES / STL / OBJ / GLB / 3MF / WRL)', key: KM.shortcutOf('file.import'), run: () => $('file').click()}]);
 }
 function create(id, ground) {
   const box = boxOf(Object.keys(S.groups)), params = {};
@@ -1326,10 +1326,10 @@ async function download(fmt) {
     await saveFile((S.docName || 'nerikone') + '.' + fmt, await r.blob());
   } catch (err) { reportError(err.message, '書き出し'); }
 }
-const IMPORTABLE = /\.(step|stp|stl|wrl|wrz|vrml|nrk)$/i;
+const IMPORTABLE = /\.(step|stp|iges|igs|stl|obj|glb|3mf|wrl|wrz|vrml|nrk)$/i;
 async function importFiles(files) {
   for (const f of files) {
-    if (!IMPORTABLE.test(f.name)) { reportError(`${f.name}: 読み込めない形式です（STEP / STL / WRL / .nrk）`, '読み込み'); continue; }
+    if (!IMPORTABLE.test(f.name)) { reportError(`${f.name}: 読み込めない形式です（STEP / IGES / STL / OBJ / GLB / 3MF / WRL / .nrk）`, '読み込み'); continue; }
     try {
       S.framed = false;
       applyState(await req('POST', 'api/import?filename=' + encodeURIComponent(f.name), await f.arrayBuffer(), true));
@@ -1341,7 +1341,7 @@ async function importFiles(files) {
 $('file').onchange = async e => { await importFiles([...e.target.files]); e.target.value = ''; };
 // drag & drop files anywhere on the window
 const dropZone = Object.assign(document.createElement('div'), {id: 'dropzone', hidden: true,
-  innerHTML: `<div>${icon('import')}<b>ここにドロップして読み込み</b><span>STEP / STL / WRL / .nrk</span></div>`});
+  innerHTML: `<div>${icon('import')}<b>ここにドロップして読み込み</b><span>STEP / IGES / STL / OBJ / GLB / 3MF / WRL / .nrk</span></div>`});
 document.body.append(dropZone);
 let dragDepth = 0;
 const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');

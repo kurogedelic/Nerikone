@@ -16,6 +16,9 @@ def _camel(n):
 
 def _unwrap(x):
     if isinstance(x, W): return x._js
+    if isinstance(x, (bytes, bytearray, memoryview)): return to_js(bytes(x))  # file contents: a Uint8Array, not a PyProxy
+    if isinstance(x, np.ndarray):  # vertices / triangle indices: one flat typed array (what Mesh(vertices, triangles) takes)
+        return to_js(np.ascontiguousarray(x.ravel().astype(np.float64 if x.dtype.kind == 'f' else np.uint32)))
     if isinstance(x, (list, tuple)): return to_js([_unwrap(i) for i in x], depth=1)
     if isinstance(x, dict): return to_js({k: _unwrap(v) for k, v in x.items()}, dict_converter=run_js("Object.fromEntries"))
     return x
@@ -31,7 +34,7 @@ def _wrap(x):
         if x.typeof == 'function': return Fn(x)
         if hasattr(x, 'length') and not hasattr(x, 'faces') and x.typeof == 'object' and x.constructor.name == 'Array':
             return [_wrap(i) for i in x]
-        return W(x)
+        return _cls(cn or 'W')(x)
     return x
 
 class Fn:
@@ -43,10 +46,16 @@ class Fn:
         except Exception as e:
             _raise(e)
 
+_CLASSES = {}
+def _cls(name):  # a Python class per JS class, so type(x).__name__ is 'Part', 'Sketch', 'Shell' ... as in smlibpy
+    c = _CLASSES.get(name)
+    if c is None: c = _CLASSES[name] = type(name, (W,), {})
+    return c
+
 class _Meta(type):
     def __instancecheck__(cls, obj):
         if type.__instancecheck__(cls, obj): return True
-        return type(obj) is W and obj._js.constructor.name == cls.__name__
+        return type.__instancecheck__(W, obj) and obj._js.constructor.name == cls.__name__
 
 class W(metaclass=_Meta):
     def __init__(self, js): object.__setattr__(self, '_js', js)

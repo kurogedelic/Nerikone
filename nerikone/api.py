@@ -59,12 +59,12 @@ def handle(method, path, query=None, body=b""):
             ext = name.rsplit(".", 1)[-1].lower()
             if ext == "nrk":
                 doc.load_json(json.loads(body))
-            elif ext in ("step", "stp", "stl", "wrl", "wrz", "vrml"):
-                fmt = "stl" if ext == "stl" else "wrl" if ext in ("wrl", "wrz", "vrml") else "step"
+            elif ext in ("step", "stp", "stl", "wrl", "wrz", "vrml", "obj", "glb", "3mf", "iges", "igs"):
+                fmt = {"stl": "stl", "wrl": "wrl", "wrz": "wrl", "vrml": "wrl", "obj": "obj", "glb": "glb", "3mf": "3mf", "iges": "iges", "igs": "iges"}.get(ext, "step")
                 stem = "".join(ch for ch in name.rsplit(".", 1)[0] if ch.isalnum() or ch in "_-")[:24] or "Import"
                 doc.execute("file.import", {"blob": K.add_blob(bytes(body)), "format": fmt, "name": stem, "to_solid": q.get("to_solid") == "1"})
             else:
-                raise K.BadParams("supported: .step .stp .stl .wrl .wrz .nrk")
+                raise K.BadParams("supported: .step .stp .iges .igs .stl .obj .glb .3mf .wrl .wrz .nrk")
             version += 1
             return _json(_state())
         b = json.loads(body or b"{}")

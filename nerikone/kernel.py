@@ -24,6 +24,7 @@ from typing import Any, Callable
 
 import smlibpy as sm
 
+import meshio
 import vrml
 
 # ---------------------------------------------------------------- command registry
@@ -931,20 +932,24 @@ def add_blob(data: bytes) -> str:
     return h
 
 
-@command("file.import", "Import STEP/STL", "File",
-         "Bodies from an imported file (`blob` = id returned by the import endpoint). STEP gives exact B-rep "
-         "solids/sheets; STL gives a display mesh unless to_solid.",
-         [P("blob", "blob", ""), P("format", "enum", "step", options=["step", "stl", "wrl"]),
-          P("to_solid", "bool", False, "STL only: convert the mesh to a solid")], creates=True)
+@command("file.import", "Import file", "File",
+         "Bodies from an imported file (`blob` = id returned by the import endpoint). STEP and IGES give exact B-rep "
+         "solids/sheets; STL, WRL, OBJ, GLB and 3MF give a display mesh unless to_solid.",
+         [P("blob", "blob", ""), P("format", "enum", "step", options=["step", "stl", "wrl", "obj", "glb", "3mf", "iges"]),
+          P("to_solid", "bool", False, "mesh formats only: convert the mesh to a solid")], creates=True)
 def _imp(B, p):
     data = BLOBS.get(p["blob"])
     if data is None:
         raise BadParams(f"unknown blob {p['blob']}")
-    if p["format"] in ("stl", "wrl"):
-        m = sm.from_stl(data) if p["format"] == "stl" else sm.Mesh(*vrml.read(data))
+    if p["format"] in ("stl", "wrl", "obj", "glb", "3mf"):
+        try:
+            m = sm.from_stl(data) if p["format"] == "stl" else sm.Mesh(*{"wrl": vrml.read, "obj": meshio.read_obj, "glb": meshio.read_glb,
+                                                                           "3mf": meshio.read_3mf}[p["format"]](data))
+        except meshio.MeshError as e:
+            raise BadParams(str(e)) from None
         B[p["name"]] = m.to_part() if p["to_solid"] else m
         return
-    r = sm.from_step(data)
+    r = sm.from_iges(data) if p["format"] == "iges" else sm.from_step(data)
     shapes = list(r) if isinstance(r, (list, tuple, sm.ShapeList)) else [r]
     for i, s in enumerate(shapes):
         B[p["name"] if i == 0 else f"{p['name']}.{i}"] = s
