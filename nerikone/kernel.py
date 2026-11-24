@@ -311,8 +311,9 @@ def _resolve(items, pt, part, kind, matches, sig_of, what):
     return pick
 
 
-def face_at(part, pt):
-    return _resolve(part.faces(), pt, part, "f", _face_matches, _face_sig, "face")
+def face_at(part, pt, tag=""):
+    """The face of `part` nearest `pt` (matching what a step recorded for it, see above). `tag` keeps two picks of one step apart."""
+    return _resolve(part.faces(), pt, part, "f" + tag, _face_matches, _face_sig, "face")
 
 
 def edges_at(part, pts):
@@ -1206,6 +1207,77 @@ def _fdel(B, p):
         if not any(f is g for g in faces):
             faces.append(f)
     B[p["body"]] = b.remove_faces(faces)
+
+
+# ---------------------------------------------------------------- assembly: mates
+
+def _unit(v):
+    n = math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+    return (v[0] / n, v[1] / n, v[2] / n)
+
+
+def _turn(part, pivot, a, b):
+    """`part` turned about `pivot` by the smallest rotation that takes direction a onto direction b."""
+    a, b = _unit(a), _unit(b)
+    dot = max(-1.0, min(1.0, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))
+    cross = (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+    n = math.sqrt(sum(c * c for c in cross))
+    if n < 1e-9:
+        if dot > 0:
+            return part
+        # opposite directions: half a turn about any axis square to a
+        cross = (a[1], -a[0], 0.0) if abs(a[2]) < 0.9 else (0.0, a[2], -a[1])
+        n = math.sqrt(sum(c * c for c in cross))
+        angle = 180.0
+    else:
+        angle = math.degrees(math.atan2(n, dot))
+    return part.rotate(sm.Axis(tuple(pivot), (cross[0] / n, cross[1] / n, cross[2] / n)), angle)
+
+
+@command("asm.mate", "Mate", "Assemble",
+         "Move body `body` so that its face nearest `at` meets the face of body `target` nearest `target_at`: flush (the faces "
+         "touch, facing each other), align (both face the same way, on one plane) or concentric (two round faces share an axis). "
+         "`offset` is the gap (flush / align) or the slide along the axis (concentric); `center` also lines the face centres up. "
+         "Only `body` moves, and later edits of either body carry the mate with them.",
+         [P("body", "body", "", "the body that moves"), P("at", "face_ref", None, "a point on its face"),
+          P("target", "body", "", "the body that stays"), P("target_at", "face_ref", None, "a point on its face"),
+          P("kind", "enum", "flush", options=["flush", "align", "concentric"]),
+          P("offset", "float", 0, "gap (flush / align) or slide along the axis (concentric)"),
+          P("center", "bool", False, "flush / align: also bring the face centres together")])
+def _mate(B, p):
+    if p["body"] == p["target"]:
+        raise BadParams("a body cannot be mated to itself")
+    mv, tg = _body(B, p["body"], (sm.Part, sm.Shell)), _body(B, p["target"], (sm.Part, sm.Shell))
+    if isinstance(mv, sm.Sketch) or isinstance(tg, sm.Sketch):
+        raise BadParams("a mate joins solids and surfaces, not sketches (extrude the sketch first)")
+    fm, ft = face_at(mv, p["at"], "m"), face_at(tg, p["target_at"], "t")
+    if p["kind"] == "concentric":
+        if fm.geom_type not in ("cylinder", "cone") or ft.geom_type not in ("cylinder", "cone"):
+            raise BadParams(f"concentric needs two round faces (cylinder or cone), got {fm.geom_type} and {ft.geom_type}")
+        am, at_ = fm.axis, ft.axis
+        dm, dt = tuple(am.direction), tuple(at_.direction)
+        if dm[0] * dt[0] + dm[1] * dt[1] + dm[2] * dt[2] < 0:
+            dt = (-dt[0], -dt[1], -dt[2])
+        om = tuple(am.origin)
+        moved = _turn(mv, om, dm, dt)
+        # the turn keeps `om` where it is: slide it onto the target's axis (square to it), then along it by `offset`
+        v = tuple(a - b for a, b in zip(at_.origin, om))
+        along = sum(a * b for a, b in zip(v, _unit(dt)))
+        u = _unit(dt)
+        shift = tuple(v[i] - along * u[i] + p["offset"] * u[i] for i in range(3))
+        B[p["body"]] = moved.translate(*shift)
+        return
+    if not (fm.is_planar and ft.is_planar):
+        raise BadParams("flush / align need two flat faces (use concentric for round ones)")
+    nm, nt = tuple(fm.normal_at()), tuple(ft.normal_at())
+    want = tuple(-c for c in nt) if p["kind"] == "flush" else nt
+    pm, pt = tuple(fm.center()), tuple(ft.center())
+    moved = _turn(mv, pm, nm, want)
+    gap = sum((a - b) * c for a, b, c in zip(pt, pm, nt)) + p["offset"]  # along the target's normal only: the part slides on the plane
+    shift = tuple(gap * c for c in nt)
+    if p["center"]:
+        shift = tuple(a - b + p["offset"] * c for a, b, c in zip(pt, pm, nt))
+    B[p["body"]] = moved.translate(*shift)
 
 
 @command("body.delete", "Delete body", "Modify", "Remove a body.", [P("body", "body", "")])

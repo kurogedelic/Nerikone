@@ -41,6 +41,10 @@ for fmt in ('stl','step','obj','glb','3mf'):
   references: `d=K.Document(); d.execute('body.box',{}); d.execute('face.extrude',{'body':'Box1','at':[0,0,1],'amount':1}); d.execute('edge.fillet',{'body':'Box1','edges':[[1,0,2]],'radius':0.2})
 d.update(2,{'amount':3}); r=[f.center() for f in d.bodies['Box1'].faces() if not f.is_planar]
 assert not d.errors and len(r)==1 and abs(r[0].z-3.93)<0.01, [(c.x,c.y,c.z) for c in r]`,
+  mate: `d=K.Document(); d.execute('body.box',{'name':'A'}); d.execute('body.box',{'length':1,'width':1,'height':1,'at':[5,5,5],'name':'B'})
+d.execute('asm.mate',{'body':'B','at':[5,5,4.5],'target':'A','target_at':[0,0,1]})
+bb=d.bodies['B'].bbox(); assert [round(x,4) for x in bb.min]==[4.5,4.5,1], list(bb.min)
+d.update(1,{'height':6}); assert not d.errors and abs(d.bodies['B'].bbox().min.z-3)<1e-6`,
   api: `code,_,data,_=api.handle('POST','/api/exec',{},json.dumps({'cmd':'body.sphere','params':{}}).encode())
 assert code==200 and 'Sphere1' in json.loads(data)['scene']
 code,_,data,_=api.handle('POST','/api/exec',{},b'{"cmd":"body.box","params":{"length":-1}}'); assert code==400`,

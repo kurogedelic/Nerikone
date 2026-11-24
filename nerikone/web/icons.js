@@ -65,6 +65,7 @@ export const icon = (name, cls = '') => {
 };
 
 export const CMD_ICON = {
+  'asm.mate': 'union', 'var.set': 'settings',
   'body.box': 'box', 'body.cylinder': 'cylinder', 'body.sphere': 'sphere', 'body.cone': 'cone', 'body.torus': 'torus',
   'sketch.extrude': 'extrude', 'nurbs.surface': 'surface', 'nurbs.loft': 'loft', 'nurbs.revolve': 'revolve',
   'face.move': 'push', 'edge.fillet': 'fillet', 'edge.chamfer': 'chamfer', 'body.shell': 'shell',

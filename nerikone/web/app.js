@@ -1259,6 +1259,7 @@ function contextActions() {
   if (s.bodies.length) out.push(null, ['transform.grab', 'move', '移動'], ['transform.rotate', 'rotate', '回転'], ['transform.scale', 'scale', '拡大縮小'], ['edit.duplicate', 'duplicate', '複製']);
   if (s.bodies.length >= 2) out.push(null, ['bool.union', 'union', '結合'], ['bool.cut', 'cut', '切り抜き'], ['bool.intersect', 'intersect', '交差']);
   if (s.faces.length === 1 && (s.faces[0].normal || S.doc.bodies[s.faces[0].body]?.kind === 'Sketch')) out.push(['sketch.offset', 'offset', 'オフセット']);
+  if (s.faces.length === 2 && s.faces[0].body !== s.faces[1].body && !s.bodies.length) out.push(null, ['edit.mate', 'union', '合わせ']);
   if (s.bodies.length) out.push(null, ['edit.mirror', 'mirror', 'ミラー'], ['edit.pattern', 'pattern', '配列複写'], ['edit.split', 'split', '平面で分割']);
   if (selBodies().length) out.push(['measure.info', 'measure', '解析']);
   if (selBodies().length) out.push(null, ['view.frame', 'fit', 'フレーム'], ['hide.selected', 'eye-off', '隠す']);
@@ -1610,6 +1611,10 @@ function renderInspector() {
 }
 function defaultsFromSelection(cmd) {
   const p = {};
+  if (cmd.id === 'asm.mate') { // the first face picked is on the body that moves, the second on the one that stays
+    const [a, b] = S.sel.faces, round = f => f && S.doc.bodies[f.body] && !f.normal;
+    return {body: a?.body || '', at: a?.point || null, target: b?.body || '', target_at: b?.point || null, kind: round(a) && round(b) ? 'concentric' : 'flush', offset: 0, center: false};
+  }
   for (const q of cmd.params) {
     if (q.type === 'body') p[q.name] = S.sel.bodies[0] || S.sel.faces[0]?.body || S.sel.edges[0]?.body || Object.keys(S.doc.bodies).at(-1) || '';
     else if (q.type === 'face_ref' && S.sel.faces.length) p[q.name] = S.sel.faces.at(-1).point;
@@ -2912,7 +2917,7 @@ if (innerWidth < 900) document.body.classList.add('no-rcol'); // a narrow window
 rapply();
 
 // ------------------------------------------------------------------ tooltips (data-tip, data-key, data-sub)
-const TOOL_JA = {'var.set': '変数', 'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
+const TOOL_JA = {'asm.mate': '合わせ', 'var.set': '変数', 'body.box': '直方体', 'body.cylinder': '円柱', 'body.sphere': '球', 'body.cone': '円錐', 'body.torus': 'トーラス',
   'sketch.extrude': '多角形を押し出し', 'nurbs.surface': 'NURBS 曲面', 'nurbs.loft': 'ロフト', 'nurbs.revolve': '回転体', 'nurbs.sweep': 'スイープ',
   'body.mirror': 'ミラー', 'hole.fill': '穴をふさぐ', 'body.pattern': '配列複写', 'body.split': '平面で分割', 'body.offset': '太らせる / 痩せさせる', 'face.draft': '抜き勾配', 'body.section': '断面を取り出す',
   'sketch.offset': 'オフセット', 'sketch.line': 'ライン', 'sketch.path': 'ライン', 'sketch.polygon': '多角形', 'sketch.rect': '矩形', 'sketch.circle': '円', 'region.extrude': '押し出し', 'face.extrude': 'プッシュ/プル',
@@ -2990,6 +2995,12 @@ setInterval(async () => {
 for (const [id, label, cmd] of [['edit.mirror', 'ミラー', 'body.mirror'], ['edit.pattern', '配列複写', 'body.pattern'], ['edit.split', '平面で分割', 'body.split'],
   ['edit.sweep', 'スイープ', 'nurbs.sweep'], ['edit.grow', '太らせる / 痩せさせる', 'body.offset'], ['edit.draft', '抜き勾配', 'face.draft'], ['edit.section', '断面を取り出す', 'body.section']])
   A(id, label, '編集', () => { if (S.cmds[cmd].params.some(q => q.name === 'body' && q.type === 'body') && !selBodies().length) return toast('ボディか面を選択'); openForm(cmd); });
+// Mate: select a face on the body that moves, then a face on the body that stays (a round face on each for concentric).
+A('edit.mate', '合わせ（面と面）', '編集', () => {
+  const f = S.sel.faces;
+  if (f.length !== 2 || f[0].body === f[1].body) return toast('別々のボディの面を 2 つ選択（動かす方、動かさない方の順）');
+  openForm('asm.mate');
+});
 A('sketch.offset', '輪郭をオフセット', 'スケッチ', () => {
   const f = S.sel.faces.at(-1);
   if (!f || !(f.normal || S.doc.bodies[f.body]?.kind === 'Sketch')) return toast('平らな面を 1 つ選択');
