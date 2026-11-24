@@ -79,6 +79,17 @@ for f in files:
         h.update(f.encode())
         h.update((OUT / f).read_bytes())
 build = h.hexdigest()[:7]
+# every script, module import and the kernel's Python files are requested with ?v=<build>: the page and the files it loads can then never
+# come from two different builds (a static host lets browsers keep each file for minutes, so otherwise a new page can get an old kernel)
+import re
+for js in OUT.glob("*.js"):
+    t = js.read_text(encoding="utf-8")
+    t = re.sub(r"(from\s+['\"])(\./[^'\"?]+\.js)(['\"])", rf"\1\2?v={build}\3", t).replace("__BUILD__", build)
+    js.write_text(t, encoding="utf-8")
+idx = (OUT / "index.html").read_text(encoding="utf-8")
+for asset in ("app.js", "local.js", "style.css"):
+    idx = idx.replace(f'src="{asset}"', f'src="{asset}?v={build}"').replace(f'href="{asset}"', f'href="{asset}?v={build}"')
+(OUT / "index.html").write_text(idx, encoding="utf-8")
 (OUT / "index.html").write_text((OUT / "index.html").read_text(encoding="utf-8").replace('name="nerikone-build" content="dev"', f'name="nerikone-build" content="{build}"'), encoding="utf-8")
 sw = (LOCAL / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", build).replace("__FILES__", json.dumps(["./"] + files))
 (OUT / "sw.js").write_text(sw, encoding="utf-8")

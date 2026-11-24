@@ -1423,7 +1423,7 @@ function renderPanels() {
 // An empty document says how to begin, instead of showing a bare grid.
 const emptyEl = Object.assign(document.createElement('div'), {id: 'empty', hidden: true}); view.append(emptyEl);
 function renderEmpty() {
-  const show = !S.doc.features.length && !Object.keys(S.doc.bodies).length && !S.tool && !S.modal && !S.form;
+  const show = false; // an empty document stays empty: no "what do you start with" panel
   if (show && !emptyEl.innerHTML) {
     emptyEl.innerHTML = `<div><div class="row"><button class="pri txt" data-act="add.menu">${icon('add')} 形を追加 <kbd>${esc(KM.shortcutOf('add.menu'))}</kbd></button>
       <button class="txt" data-act="file.open">${icon('open')} 開く</button>${savedCopy() ? `<button class="txt" data-act="file.restore" data-tip="${new Date(savedCopy().time).toLocaleString()}">${icon('restore')} 復元</button>` : ''}</div></div>`;

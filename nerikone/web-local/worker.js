@@ -5,16 +5,17 @@ import * as sm from './vendor/smlibwasm/dist/index.js';
 
 let py = null;
 const ready = (async () => {
-  postMessage({progress: 'Python を読み込み中…'});
+  postMessage({progress: 'Python を読み込み中…', pct: 38});
   py = await loadPyodide({indexURL: new URL('./vendor/pyodide/', import.meta.url).href});
-  postMessage({progress: 'numpy を読み込み中…'});
+  postMessage({progress: 'numpy を読み込み中…', pct: 62});
   await py.loadPackage('numpy');
   py.registerJsModule('smjs', sm);
-  postMessage({progress: 'カーネルを準備中…'});
+  postMessage({progress: 'カーネルを準備中…', pct: 82});
   for (const f of ['smlibpy_shim.py', 'vrml.py', 'meshio.py', 'kernel.py', 'api.py']) {
-    const r = await fetch(new URL('./py/' + f, import.meta.url)); py.FS.writeFile(f, new Uint8Array(await r.arrayBuffer()));
+    const r = await fetch(new URL('./py/' + f + '?v=__BUILD__', import.meta.url)); py.FS.writeFile(f, new Uint8Array(await r.arrayBuffer()));
   }
   await py.runPythonAsync('import smlibpy_shim\nimport api');
+  postMessage({progress: '準備できました', pct: 100});
   postMessage({ready: true});
 })().catch(e => postMessage({fatal: String(e && e.message || e)}));
 
