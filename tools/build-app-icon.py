@@ -45,9 +45,23 @@ for name, size in (("favicon-32.png", 32), ("icon-192.png", 192), ("icon-512.png
     resize(size, OUT / name)
 print("wrote", ", ".join(sorted(p.name for p in OUT.iterdir())))
 
+# macOS does not round app icons for you: the desktop icon is the artwork scaled to 824 px with rounded corners on a transparent
+# 1024 px canvas (Apple's template). A master that already has transparency is used as it is.
+desktop_src = big
+has_alpha = subprocess.run(["sips", "-g", "hasAlpha", str(big)], capture_output=True, text=True).stdout.strip().endswith("yes") if shutil.which("sips") else False
+if not has_alpha and shutil.which("rsvg-convert"):
+    desktop_src = tmp / "desktop-1024.png"
+    # clip the artwork to a rounded square with an SVG (rsvg-convert keeps the alpha, which ImageMagick composites did not)
+    wrap = tmp / "desktop-wrap.svg"
+    wrap.write_text(f'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><clipPath id="c"><rect x="100" y="100" width="824" height="824" rx="185" ry="185"/></clipPath></defs>
+<image xlink:href="{big.as_posix()}" x="100" y="100" width="824" height="824" clip-path="url(#c)"/></svg>''')
+    subprocess.run(["rsvg-convert", "-w", "1024", "-h", "1024", str(wrap), "-o", str(desktop_src)], check=True)
+    print("desktop icon: rounded, on a transparent canvas")
+
 desktop = ROOT / "desktop"
 if (desktop / "node_modules" / ".bin" / "tauri").exists():
-    subprocess.run([str(desktop / "node_modules" / ".bin" / "tauri"), "icon", str(big)], cwd=desktop, check=True)
+    subprocess.run([str(desktop / "node_modules" / ".bin" / "tauri"), "icon", str(desktop_src)], cwd=desktop, check=True)
     for extra in ("android", "ios"):  # mobile sets we do not ship
         shutil.rmtree(desktop / "src-tauri" / "icons" / extra, ignore_errors=True)
     print("rebuilt desktop/src-tauri/icons")
