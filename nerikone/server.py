@@ -242,14 +242,14 @@ class H(BaseHTTPRequestHandler):
                     ext = name.rsplit(".", 1)[-1].lower()
                     if ext == "nrk":
                         doc.load_json(json.loads(data))
-                    elif ext in ("step", "stp", "stl", "wrl", "wrz", "vrml", "obj", "glb", "3mf", "iges", "igs", "scad"):
-                        fmt = {"stl": "stl", "wrl": "wrl", "wrz": "wrl", "vrml": "wrl", "obj": "obj", "glb": "glb", "3mf": "3mf", "iges": "iges", "igs": "iges"}.get(ext, "scad" if ext == "scad" else "step")
+                    elif ext in ("step", "stp", "stl", "wrl", "wrz", "vrml", "obj", "glb", "3mf", "iges", "igs"):
+                        fmt = {"stl": "stl", "wrl": "wrl", "wrz": "wrl", "vrml": "wrl", "obj": "obj", "glb": "glb", "3mf": "3mf", "iges": "iges", "igs": "iges"}.get(ext, "step")
                         stem = "".join(ch for ch in name.rsplit(".", 1)[0] if ch.isalnum() or ch in "_-")[:24] or "Import"
                         doc.execute("file.import", {"blob": K.add_blob(data), "format": fmt, "name": stem,
                                                     "to_solid": q.get("to_solid") == "1"})
                         trim_blobs()
                     else:
-                        raise K.BadParams("supported: .step .stp .iges .igs .stl .obj .glb .3mf .wrl .wrz .nrk .scad")
+                        raise K.BadParams("supported: .step .stp .iges .igs .stl .obj .glb .3mf .wrl .wrz .nrk")
                     s.version += 1
                     return self._json(state(s))
                 body = json.loads(self._body(MAX_JSON) or b"{}")

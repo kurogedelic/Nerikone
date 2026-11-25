@@ -31,7 +31,6 @@ import constraints
 import expr
 import meshio
 import vrml
-import scad
 
 # ---------------------------------------------------------------- command registry
 
@@ -1340,7 +1339,7 @@ def add_blob(data: bytes) -> str:
 @command("file.import", "Import file", "File",
          "Bodies from an imported file (`blob` = id returned by the import endpoint). STEP and IGES give exact B-rep "
          "solids/sheets; STL, WRL, OBJ, GLB and 3MF give a display mesh unless to_solid.",
-         [P("blob", "blob", ""), P("format", "enum", "step", options=["step", "stl", "wrl", "obj", "glb", "3mf", "iges", "scad"]),
+         [P("blob", "blob", ""), P("format", "enum", "step", options=["step", "stl", "wrl", "obj", "glb", "3mf", "iges"]),
           P("to_solid", "bool", False, "mesh formats only: convert the mesh to a solid"),
           P("scale", "float", 1, "multiplies the file's coordinates (1000 for a file in metres, into a millimetre document)", 1e-9),
           P("place", "enum", "asis", "asis: where the file puts it; origin: its centre on the origin; ground: centred on the origin "
@@ -1349,12 +1348,7 @@ def _imp(B, p):
     data = BLOBS.get(p["blob"])
     if data is None:
         raise BadParams(f"unknown blob {p['blob']}")
-    if p["format"] == "scad":
-        try:
-            shapes = scad.evaluate(data.decode("utf-8"), COMMANDS, p["name"])
-        except (scad.ScadError, UnicodeError) as e:
-            raise BadParams(f"SCAD: {e}") from None
-    elif p["format"] in ("stl", "wrl", "obj", "glb", "3mf"):
+    if p["format"] in ("stl", "wrl", "obj", "glb", "3mf"):
         try:
             m = sm.from_stl(data) if p["format"] == "stl" else sm.Mesh(*{"wrl": vrml.read, "obj": meshio.read_obj, "glb": meshio.read_glb,
                                                                            "3mf": meshio.read_3mf}[p["format"]](data))

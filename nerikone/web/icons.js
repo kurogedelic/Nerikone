@@ -16,7 +16,7 @@ export const FK = {
   rectangle: 'rectangle', polygon: 'polygon', fit: 'fit', move: 'move', rotate: 'rotate', scale: 'resize',
   facemove: 'move_vertical', push: 'push_pull', shell: 'shell', fillet: 'fillet', chamfer: 'chamfer',
   mate: 'mate', group: 'group', variable: 'variable', parts_list: 'parts_list',
-  union: 'union', cut: 'subtract', intersect: 'intersect', palette: 'palette', bucket: 'bucket', offset: 'offset',
+  union: 'union', cut: 'difference', intersect: 'intersect', palette: 'palette', bucket: 'bucket', offset: 'offset',
   mirror: 'mirror', pattern: 'pattern', split: 'split', section: 'section', measure: 'measure', workplane: 'work_plane', sweep: 'sweep',
   box: 'cube', cylinder: 'cylinder', sphere: 'sphere', cone: 'cone', torus: 'torus', extrude: 'extrude', surface: 'surface',
   loft: 'loft', revolve: 'revolve', spline: 'spline', part: 'cube', shell_body: 'surface_body', mesh: 'mesh',

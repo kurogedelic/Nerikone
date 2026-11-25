@@ -44,7 +44,7 @@ for n in ("worker.js", "local.js", "manifest.webmanifest"):
     shutil.copy2(LOCAL / n, OUT / n)
 # Python side
 (OUT / "py").mkdir()
-for src in (LOCAL / "smlibpy_shim.py", ROOT / "nerikone" / "kernel.py", ROOT / "nerikone" / "vrml.py", ROOT / "nerikone" / "meshio.py", ROOT / "nerikone" / "constraints.py", ROOT / "nerikone" / "expr.py", ROOT / "nerikone" / "scad.py", ROOT / "nerikone" / "api.py"):
+for src in (LOCAL / "smlibpy_shim.py", ROOT / "nerikone" / "kernel.py", ROOT / "nerikone" / "vrml.py", ROOT / "nerikone" / "meshio.py", ROOT / "nerikone" / "constraints.py", ROOT / "nerikone" / "expr.py", ROOT / "nerikone" / "api.py"):
     shutil.copy2(src, OUT / "py" / src.name)
 # the kernel (WebAssembly) and Python (Pyodide), served from the same place
 sw = OUT / "vendor" / "smlibwasm"

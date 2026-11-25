@@ -11,7 +11,7 @@ const ready = (async () => {
   await py.loadPackage('numpy');
   py.registerJsModule('smjs', sm);
   postMessage({progress: 'カーネルを準備中…', pct: 82});
-  for (const f of ['smlibpy_shim.py', 'vrml.py', 'meshio.py', 'constraints.py', 'expr.py', 'scad.py', 'kernel.py', 'api.py']) {
+  for (const f of ['smlibpy_shim.py', 'vrml.py', 'meshio.py', 'constraints.py', 'expr.py', 'kernel.py', 'api.py']) {
     const r = await fetch(new URL('./py/' + f + '?v=__BUILD__', import.meta.url)); py.FS.writeFile(f, new Uint8Array(await r.arrayBuffer()));
   }
   await py.runPythonAsync('import smlibpy_shim\nimport api');
