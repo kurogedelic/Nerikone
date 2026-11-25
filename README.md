@@ -71,10 +71,10 @@ through [smlibpy](https://pypi.org/project/smlibpy/) by AWV Informatik. サン�
 Icons: the [Fukiai](https://github.com/hugelton/Fukiai) icon font and Tabler Icons (both MIT).
 Nerikone is independent and not affiliated with or endorsed by either.
 
-### OpenSCAD `.scad` import
+### `.scad` script import
 
-Drop a `.scad` file into the viewer or use **Import**. The server and browser/WASM builds use the same bounded Python parser. The original UTF-8 source is stored as a content-addressed blob in the `.nrk` document; importing creates one rebuildable B-rep history feature, with one body per top-level solid. Units follow the document's units (OpenSCAD coordinates have no declared units).
+Drop a `.scad` file into the viewer or use **Import**. The server and browser/WASM builds use the same bounded Python parser. The original UTF-8 source is stored as a content-addressed blob in the `.nrk` document; importing creates one rebuildable B-rep history feature, with one body per top-level solid. Units follow the document's units (`.scad` coordinates have no declared units).
 
 Supported: scalar assignments, arithmetic `+ - * / % ^`, degree-based `sin`/`cos`/`tan`, comparisons in `if`, vectors, local parameter-only modules, `cube`, `sphere`, `cylinder` (including frustums), `translate`, Euler `rotate`, uniform `scale`, and `union`, `difference`, `intersection`. A limited 2D path supports circles, polygons, `hull` of four equal circles at rectangle corners, paired inward/outward `offset` for rounded polygon corners, and `linear_extrude` into B-rep solids. `center` works on cubes and cylinders. `$fn`, `$fa`, `$fs` are accepted for round solids, but exact B-rep geometry ignores tessellation settings. The subset limits source to 100 KB, 20,000 tokens, 1,000 nodes per block, 500 solids, and 32 nesting levels. Invalid or unsupported syntax fails the import with an error; it is never silently skipped.
 
-Unsupported: module defaults and recursion, functions, loops, 2D forms outside the limited path above, rotate extrusion, general hull/offset/minkowski, includes/uses/imports, color, nonuniform scaling, arbitrary-axis rotation, and OpenSCAD special variables beyond the ignored tessellation settings. Expressions do not call functions or read files. A failed import leaves the document unchanged.
+Unsupported: module defaults and recursion, functions, loops, 2D forms outside the limited path above, rotate extrusion, general hull/offset/minkowski, includes/uses/imports, color, nonuniform scaling, arbitrary-axis rotation, and special variables beyond the ignored tessellation settings. Expressions do not call functions or read files. A failed import leaves the document unchanged.

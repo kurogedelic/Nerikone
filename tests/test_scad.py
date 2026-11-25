@@ -55,3 +55,13 @@ def test_module_2d_extrusion_with_rounded_cutout():
     assert info['bbox'][0] == pytest.approx([0,0,0],abs=1e-6)
     assert info['bbox'][1] == pytest.approx([30,10,1],abs=1e-6)
     assert 285 < info['volume'] < 300
+
+
+@pytest.mark.parametrize('source', [
+    'cube(' + '[' * 3000 + '1' + ']' * 3000 + ');',  # nesting deep enough to exhaust the recursion limit
+    'cube(' + '(' * 3000 + '1' + ')' * 3000 + ');',
+    'translate([1,0,0])' * 500 + 'cube(1);',
+    'include </etc/passwd>; cube(1);', 'surface(file="/etc/passwd");', 'cube(9**9**9);', 'cube(1/0);', 'cube(1);\x00',
+])
+def test_hostile_input_is_a_refusal_not_a_crash(source):
+    with pytest.raises(K.BadParams): load(source)

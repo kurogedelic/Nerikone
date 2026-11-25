@@ -1,4 +1,4 @@
-"""Bounded OpenSCAD solid subset. No Python evaluation, file access, or implicit fallback."""
+"""Bounded subset of the .scad solid-script format. No Python evaluation, file access, or implicit fallback."""
 import ast
 import math
 import re

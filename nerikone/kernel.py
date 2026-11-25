@@ -1475,7 +1475,7 @@ class Document:
                 cmd.run(out, params)
             except BadParams:
                 raise
-            except (sm.ModelingError, ValueError, ArithmeticError) as e:
+            except (sm.ModelingError, ValueError, ArithmeticError, RecursionError) as e:  # (too deeply nested input is a refusal too)
                 # whatever the kernel (or a numeric check inside it) refuses is a refusal of these parameters: one kind of error, its reason kept
                 raise BadParams(f"{cmd.label}: {e}") from None
             finally:
