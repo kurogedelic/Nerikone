@@ -14,11 +14,18 @@ const here = path.dirname(new URL(import.meta.url).pathname), root = path.resolv
 const py = await loadPyodide();
 await py.loadPackage('numpy');
 py.registerJsModule('smjs', sm);
-for (const [f, dir] of [['smlibpy_shim.py', 'nerikone/web-local'], ['kernel.py', 'nerikone'], ['vrml.py', 'nerikone'], ['meshio.py', 'nerikone'], ['constraints.py', 'nerikone'], ['expr.py', 'nerikone'], ['api.py', 'nerikone']])
+for (const [f, dir] of [['smlibpy_shim.py', 'nerikone/web-local'], ['kernel.py', 'nerikone'], ['vrml.py', 'nerikone'], ['meshio.py', 'nerikone'], ['constraints.py', 'nerikone'], ['expr.py', 'nerikone'], ['scad.py', 'nerikone'], ['api.py', 'nerikone']])
   py.FS.writeFile(f, readFileSync(path.join(root, dir, f)));
 await py.runPythonAsync('import smlibpy_shim, kernel as K, api, json, math');
 
 const checks = {
+  scad_2d: `src=b'module p(w,h,r){hull(){translate([r,r])circle(r=r);translate([w-r,r])circle(r=r);translate([r,h-r])circle(r=r);translate([w-r,h-r])circle(r=r);}} linear_extrude(height=1) difference(){p(30,10,2);translate([10,5])polygon([[-2,-1],[2,-1],[3,1],[-1,1]]);}'
+d=K.Document(); d.execute('file.import',{'blob':K.add_blob(src),'format':'scad','name':'S'})
+assert len(d.bodies)==1 and 285<next(iter(d.bodies.values())).volume<300`,
+  scad_import: `source=b'difference(){cube([4,4,4],center=true); sphere(r=1);}'
+d=K.Document(); d.execute('file.import',{'blob':K.add_blob(source),'format':'scad','name':'S'})
+assert len(d.bodies)==1 and abs(next(iter(d.bodies.values())).volume-(64-4*math.pi/3))<1e-4
+e=K.Document(); e.load_json(d.to_json()); assert len(e.bodies)==1`,
   box: `d=K.Document(); d.execute('body.box',{'length':2,'width':3,'height':4}); i=K.body_info(d.bodies['Box1'])
 assert i['kind']=='Part' and (i['faces'],i['edges'])==(6,12) and abs(i['volume']-24)<1e-6, i`,
   fillet: `d=K.Document(); d.execute('body.box',{}); d.execute('edge.fillet',{'body':'Box1','edges':[[1,0,1]],'radius':0.2})
@@ -77,6 +84,7 @@ code,_,data,_=api.handle('POST','/api/exec',{},b'{"cmd":"body.box","params":{"le
 };
 const out = {};
 for (const [name, code] of Object.entries(checks)) {
+  if (process.env.NERIKONE_WASM_ONLY && name !== process.env.NERIKONE_WASM_ONLY) continue;
   try { await py.runPythonAsync(code); out[name] = 'ok'; }
   catch (e) { out[name] = 'FAIL ' + String(e.message).split('\n').filter(Boolean).slice(-2).join(' | ').slice(0, 300); }
 }

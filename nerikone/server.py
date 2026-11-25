@@ -48,7 +48,7 @@ _BUILD = {"stamp": None, "id": "dev"}
 
 def build_id():
     """A short hex number from the contents of the code (viewer and kernel). It is shown in the status bar; it changes with the code."""
-    files = sorted(p for p in WEB.glob("*") if p.suffix in (".js", ".css", ".html")) + [pathlib.Path(__file__).parent / n for n in ("kernel.py", "server.py", "api.py", "vrml.py", "meshio.py", "constraints.py", "expr.py")]
+    files = sorted(p for p in WEB.glob("*") if p.suffix in (".js", ".css", ".html")) + [pathlib.Path(__file__).parent / n for n in ("kernel.py", "server.py", "api.py", "vrml.py", "meshio.py", "constraints.py", "expr.py", "scad.py")]
     stamp = tuple((str(f), f.stat().st_mtime_ns) for f in files if f.exists())
     if stamp != _BUILD["stamp"]:
         import hashlib
@@ -242,14 +242,14 @@ class H(BaseHTTPRequestHandler):
                     ext = name.rsplit(".", 1)[-1].lower()
                     if ext == "nrk":
                         doc.load_json(json.loads(data))
-                    elif ext in ("step", "stp", "stl", "wrl", "wrz", "vrml", "obj", "glb", "3mf", "iges", "igs"):
-                        fmt = {"stl": "stl", "wrl": "wrl", "wrz": "wrl", "vrml": "wrl", "obj": "obj", "glb": "glb", "3mf": "3mf", "iges": "iges", "igs": "iges"}.get(ext, "step")
+                    elif ext in ("step", "stp", "stl", "wrl", "wrz", "vrml", "obj", "glb", "3mf", "iges", "igs", "scad"):
+                        fmt = {"stl": "stl", "wrl": "wrl", "wrz": "wrl", "vrml": "wrl", "obj": "obj", "glb": "glb", "3mf": "3mf", "iges": "iges", "igs": "iges"}.get(ext, "scad" if ext == "scad" else "step")
                         stem = "".join(ch for ch in name.rsplit(".", 1)[0] if ch.isalnum() or ch in "_-")[:24] or "Import"
                         doc.execute("file.import", {"blob": K.add_blob(data), "format": fmt, "name": stem,
                                                     "to_solid": q.get("to_solid") == "1"})
                         trim_blobs()
                     else:
-                        raise K.BadParams("supported: .step .stp .iges .igs .stl .obj .glb .3mf .wrl .wrz .nrk")
+                        raise K.BadParams("supported: .step .stp .iges .igs .stl .obj .glb .3mf .wrl .wrz .nrk .scad")
                     s.version += 1
                     return self._json(state(s))
                 body = json.loads(self._body(MAX_JSON) or b"{}")
@@ -305,7 +305,7 @@ def watch_and_reload():
     """--reload: when the Python files change, save the shared document, restart this process, and load it back.
     The viewer files (web/) need no restart: reload the page."""
     here = pathlib.Path(__file__).parent
-    files = [here / n for n in ("kernel.py", "server.py", "vrml.py", "meshio.py", "constraints.py", "expr.py", "api.py")]
+    files = [here / n for n in ("kernel.py", "server.py", "vrml.py", "meshio.py", "constraints.py", "expr.py", "scad.py", "api.py")]
     stamp = lambda: [f.stat().st_mtime if f.exists() else 0 for f in files]
     seen = stamp()
     while True:

@@ -61,8 +61,9 @@ export function glyphFor(name) {
   return code ? {fk: true, ch: String.fromCodePoint(parseInt(code, 16))} : {fk: false, tabler: ICONS[name] || name};
 }
 export const icon = (name, cls = '') => {
-  if (PICTO[name]) return PICTO[name].replace('class="pic"', `class="pic ti ${cls}"`);
   const g = glyphFor(name);
+  // the stand-in solid pictograms (pictos.js) are only for what Fukiai has no drawing of yet
+  if (!g.fk && PICTO[name]) return PICTO[name].replace('class="pic"', `class="pic ti ${cls}"`);
   return g.fk ? `<i class="ti fk ${cls}" aria-hidden="true">${g.ch}</i>` : `<i class="ti ti-${g.tabler} ${cls}" aria-hidden="true"></i>`;
 };
 
