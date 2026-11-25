@@ -515,6 +515,7 @@ const EN = {
   '球': 'Sphere',
   '幅': 'width',
   '色': 'Colour',
+  '個の .scad をまとめて読み込みます（主ファイル:': ' .scad files are imported together (main file:',
   'グループを作るか、ボディを選択': 'Make a group or select a body',
   '部品表を書き出す (.csv)': 'Export the parts list (.csv)',
   '部品をグループにする': 'Group the parts',

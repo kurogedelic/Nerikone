@@ -73,8 +73,19 @@ Nerikone is independent and not affiliated with or endorsed by either.
 
 ### `.scad` script import
 
-Drop a `.scad` file into the viewer or use **Import**. The server and browser/WASM builds use the same bounded Python parser. The original UTF-8 source is stored as a content-addressed blob in the `.nrk` document; importing creates one rebuildable B-rep history feature, with one body per top-level solid. Units follow the document's units (`.scad` coordinates have no declared units).
+Drop one or more `.scad` files into the viewer, or use **Import**. Files dropped together are imported as one bundle: the
+main file (the one no other file includes) plus what it `include`s or `use`s. The server and the browser build use the same
+bounded interpreter (no Python evaluation, no file access; everything else is refused with a reason). The source is stored in
+the `.nrk` document; importing creates one rebuildable B-rep history step with one body per top-level solid. Units follow
+the document's units (`.scad` coordinates have no declared units). A failed import leaves the document unchanged.
 
-Supported: scalar assignments, arithmetic `+ - * / % ^`, degree-based `sin`/`cos`/`tan`, comparisons in `if`, vectors, local parameter-only modules, `cube`, `sphere`, `cylinder` (including frustums), `translate`, Euler `rotate`, uniform `scale`, and `union`, `difference`, `intersection`. A limited 2D path supports circles, polygons, `hull` of four equal circles at rectangle corners, paired inward/outward `offset` for rounded polygon corners, and `linear_extrude` into B-rep solids. `center` works on cubes and cylinders. `$fn`, `$fa`, `$fs` are accepted for round solids, but exact B-rep geometry ignores tessellation settings. The subset limits source to 100 KB, 20,000 tokens, 1,000 nodes per block, 500 solids, and 32 nesting levels. Invalid or unsupported syntax fails the import with an error; it is never silently skipped.
+Supported: numbers, booleans, strings, vectors, ranges, list comprehensions (`for`, `if`, `let`, `each`), the usual operators,
+`function` and `module` (default and named arguments, `children()`), `for` / `if` / `let`, `include` / `use`, math functions
+(`sin cos tan asin acos atan atan2 sqrt abs min max floor ceil round pow exp ln log sign len concat str norm cross search lookup`),
+`cube sphere cylinder` (frustums too) `polyhedron`, `circle square polygon` (with holes), `translate rotate scale mirror multmatrix color`
+(rotations and moves for `multmatrix`), `union difference intersection`, `hull` (2D; 3D by the convex hull of the tessellated shapes,
+exact arcs for upright cylinders of one height), `offset`, `linear_extrude` (height, center), `rotate_extrude`.
 
-Unsupported: module defaults and recursion, functions, loops, 2D forms outside the limited path above, rotate extrusion, general hull/offset/minkowski, includes/uses/imports, color, nonuniform scaling, arbitrary-axis rotation, and special variables beyond the ignored tessellation settings. Expressions do not call functions or read files. A failed import leaves the document unchanged.
+Not supported yet: `minkowski`, `text`, `projection`, `resize`, `import`, `surface`, twisted or scaled `linear_extrude`, random
+numbers, and function literals. Limits: 100 KB per file, 50 files, a step budget and 120 seconds per import. Curved shapes are
+built as exact curved faces rather than the coarse polygons the language's own previews use, so volumes can differ by about 1 %.

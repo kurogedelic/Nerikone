@@ -1424,7 +1424,21 @@ async function importHint() {
   if (Math.abs((f.params.scale || 1) - scale) > 1e-12) await updateFeature(f.id, {scale});
   S.imp = {id: f.id}; frame(importBodies(f.params.name).length ? Object.keys(S.doc.bodies).filter(n => n === f.params.name || n.startsWith(f.params.name + '.')) : null); renderCtx();
 }
+// Several .scad files imported together become one bundle: the main file (the one no other includes) and what it includes / uses.
+async function bundleScad(files) {
+  const scads = files.filter(f => /\.scad$/i.test(f.name)); if (scads.length < 2) return files;
+  const base = n => n.replace(/^.*[\\/]/, ''), texts = {};
+  for (const f of scads) texts[base(f.name)] = await f.text();
+  const used = new Set();
+  for (const t of Object.values(texts)) for (const m of t.matchAll(/\b(?:include|use)\s*<([^>]+)>/g)) used.add(base(m[1]));
+  const mains = Object.keys(texts).filter(n => !used.has(n)), pool = mains.length ? mains : Object.keys(texts);
+  const main = pool.sort((x, y) => texts[y].length - texts[x].length)[0];
+  const body = new TextEncoder().encode('//@nerikone-bundle\n' + JSON.stringify({main, files: texts}));
+  toast(`${scads.length} 個の .scad をまとめて読み込みます（主ファイル: ${main}）`);
+  return [...files.filter(f => !/\.scad$/i.test(f.name)), {name: main, arrayBuffer: async () => body.buffer}];
+}
 async function importFiles(files) {
+  files = await bundleScad(files);
   for (const f of files) {
     if (!IMPORTABLE.test(f.name)) { reportError(`${f.name}: 読み込めない形式です（STEP / IGES / STL / OBJ / GLB / 3MF / WRL / SCAD / .nrk）`, '読み込み'); continue; }
     try {

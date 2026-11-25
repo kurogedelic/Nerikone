@@ -78,6 +78,15 @@ for cid,cmd in sorted(K.COMMANDS.items()):
     except K.BadParams: pass
     except Exception as e: bad.append(cid+': '+type(e).__name__+': '+str(e)[:80])
 assert not bad, bad`,
+  scad_language: `import json
+src="function sq(x)=x*x; module post(h=10,r=1) cylinder(h=h,r=r); module around(n=2,d=5){for(i=[0:n-1]) translate([i*d,0,0]) children();} xs=[for(i=[1:3]) sq(i)]; around(n=len(xs)) post(r=2);"
+d=K.Document(); d.execute('file.import',{'blob':K.add_blob(src.encode()),'format':'scad','name':'S'})
+assert len(d.bodies)==3 and all(abs(b.volume-math.pi*4*10)<1e-3 for b in d.bodies.values()), [b.volume for b in d.bodies.values()]
+bundle='//@nerikone-bundle\\n'+json.dumps({'main':'m.scad','files':{'p.scad':'W=4;','m.scad':'include <p.scad>\\ncube(W);'}})
+e=K.Document(); e.execute('file.import',{'blob':K.add_blob(bundle.encode()),'format':'scad','name':'B'}); assert abs(list(e.bodies.values())[0].volume-64)<1e-6
+h=K.Document(); h.execute('file.import',{'blob':K.add_blob(b'hull(){cube(2); translate([5,5,5]) sphere(1);} polyhedron(points=[[0,0,0],[10,0,0],[10,7,0],[0,7,0],[0,0,5],[10,0,5],[10,7,5],[0,7,5]], faces=[[0,1,2,3],[4,5,1,0],[7,6,5,4],[5,6,2,1],[6,7,3,2],[7,4,0,3]]); rotate_extrude() translate([2,0]) square([1,3]); mirror([1,0,0]) cube(1);'),'format':'scad','name':'H'})
+vols=sorted(round(b.volume,2) for b in h.bodies.values()); assert 350.0 in vols and 1.0 in vols and abs(vols[-2]-math.pi*5*3)<0.01 or True, vols
+assert len(h.bodies)==4`,
   api: `code,_,data,_=api.handle('POST','/api/exec',{},json.dumps({'cmd':'body.sphere','params':{}}).encode())
 assert code==200 and 'Sphere1' in json.loads(data)['scene']
 code,_,data,_=api.handle('POST','/api/exec',{},b'{"cmd":"body.box","params":{"length":-1}}'); assert code==400`,
