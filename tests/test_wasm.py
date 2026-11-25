@@ -24,6 +24,6 @@ def results():
     return json.loads(r.stdout.strip().splitlines()[-1])
 
 
-@pytest.mark.parametrize("name", ["scad_import", "box", "fillet", "boolean", "pushpull", "sketch_pocket", "refusal", "export_import", "references", "mate", "groups_and_parts", "drawing_and_measure", "import_place", "every_command", "api"])
+@pytest.mark.parametrize("name", ["scad_2d", "scad_import", "box", "fillet", "boolean", "pushpull", "sketch_pocket", "refusal", "export_import", "references", "mate", "groups_and_parts", "drawing_and_measure", "import_place", "every_command", "api"])
 def test_wasm_kernel(results, name):
     assert results[name] == "ok", results[name]

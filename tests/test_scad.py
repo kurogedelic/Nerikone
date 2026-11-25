@@ -28,3 +28,30 @@ def test_boolean():
 @pytest.mark.parametrize('source', ['import("secret.stl");', 'for(i=[1:100]) cube(1);', 'cube(1); nonsense();', 'cube(1); cube(1) garbage;', 'cube(10^1000000);'])
 def test_reject_unsupported(source):
     with pytest.raises(K.BadParams): load(source)
+
+
+def test_module_2d_extrusion_with_rounded_cutout():
+    source = '''
+    w=30; h=10; r=2; slot=0.2;
+    module plate(x,y,rad) {
+      hull() {
+        translate([rad,rad]) circle(r=rad);
+        translate([x-rad,rad]) circle(r=rad);
+        translate([rad,y-rad]) circle(r=rad);
+        translate([x-rad,y-rad]) circle(r=rad);
+      }
+    }
+    module cutout(rad) {
+      points=[[-2,-1],[2,-1],[3,1],[-1,1]];
+      if (rad>0) offset(r=rad) offset(delta=-rad) polygon(points);
+      else polygon(points);
+    }
+    linear_extrude(height=1,convexity=10)
+    difference() { plate(w,h,r); translate([10,5]) cutout(slot); }
+    '''
+    doc=load(source)
+    assert len(doc.bodies)==1
+    info=K.inspect_body(next(iter(doc.bodies.values())))
+    assert info['bbox'][0] == pytest.approx([0,0,0],abs=1e-6)
+    assert info['bbox'][1] == pytest.approx([30,10,1],abs=1e-6)
+    assert 285 < info['volume'] < 300
