@@ -125,6 +125,9 @@ def evaluate(source, commands, prefix):
         serial+=1
         if serial>500: raise ScadError('solid operation limit exceeded')
         name=f'{prefix}.{serial}'; params={**params,'name':name}
+        params = {**params, **{p.name: p.default for p in commands[cmd].params if p.name not in params}}
+        for key in ('length','width','height','radius'):
+            if key in params and params[key] <= 0: raise ScadError(f'{cmd}: {key} must be positive')
         commands[cmd].run(bodies,params)
         return [name]
     def one(node,depth=0):
