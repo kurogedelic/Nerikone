@@ -1976,6 +1976,62 @@ def _svg_with_dimensions(svg, views, units):
     return svg
 
 
+def _dxf_with_dimensions(dxf, views, units):
+    """The DXF drawing with each view's overall width and height dimensioned: lines and text on a DIMENSIONS layer, in model
+    units (the file's own unit setting says which)."""
+    boxes = []
+    for v in views:
+        try:
+            bb = v.bbox()
+            boxes.append((list(bb.min), list(bb.max)))
+        except Exception:
+            continue
+    if not boxes:
+        return dxf
+    size = max(max(h[0] for _, h in boxes) - min(l[0] for l, _ in boxes), max(h[1] for _, h in boxes) - min(l[1] for l, _ in boxes))
+    fs, off, tick = size / 55, size / 40, size / 120
+    out, handle = [], [0x4000]
+
+    def ent(kind, sub, *codes):
+        handle[0] += 1
+        rows = ["0", kind, "5", f"{handle[0]:X}", "100", "AcDbEntity", "8", "DIMENSIONS", "62", "5", "100", sub]
+        for c, val in codes:
+            rows += [str(c), val if isinstance(val, str) else repr(float(val))]
+        out.append("\n".join(rows) + "\n")
+
+    def line(x1, y1, x2, y2):
+        ent("LINE", "AcDbLine", (10, x1), (20, y1), (30, 0), (11, x2), (21, y2), (31, 0))
+
+    def text(x, y, label, rot):
+        ent("TEXT", "AcDbText", (10, x), (20, y), (30, 0), (40, fs), (1, label), (50, rot), (72, "1"), (11, x), (21, y), (31, 0))
+        out[-1] += "100\nAcDbText\n"
+
+    for lo, hi in boxes:
+        for horizontal, a, b in ((True, lo[0], hi[0]), (False, lo[1], hi[1])):
+            val = b - a
+            if val < 1e-9:
+                continue
+            label = f"{val:.4g} {units}"
+            if horizontal:
+                y = lo[1] - off
+                line(a, y, b, y)
+                line(a, lo[1] - off / 3, a, y - tick)
+                line(b, lo[1] - off / 3, b, y - tick)
+                text((a + b) / 2, y + tick, label, 0)
+            else:
+                x = hi[0] + off
+                line(x, a, x, b)
+                line(hi[0] + off / 3, a, x + tick, a)
+                line(hi[0] + off / 3, b, x + tick, b)
+                text(x + fs * 1.1, (a + b) / 2, label, 90)
+    i = dxf.find("ENTITIES")
+    j = dxf.find("ENDSEC", i) if i >= 0 else -1
+    if j < 0:
+        return dxf
+    j = dxf.rfind("0\n", 0, j)
+    return dxf[:j] + "".join(out) + dxf[j:]
+
+
 def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: float | None = None) -> bytes:
     """`tolerance` (model units) sets how finely curved faces are faceted in the mesh formats (stl, 3mf, obj, wrl)."""
     if fmt == "nrk":
@@ -2008,7 +2064,7 @@ def export(doc: Document, fmt: str, names: list[str] | None = None, tolerance: f
             raise BadParams("a drawing needs at least one solid or surface body")
         views = sm.drawing_views(parts)
         if fmt == "dxf":
-            return sm.to_dxf(views, unit=step_unit).encode()
+            return _dxf_with_dimensions(sm.to_dxf(views, unit=step_unit), views, doc.units).encode()
         return _svg_with_dimensions(sm.to_svg(views), views, doc.units).encode()
     if fmt == "wrl":
         meshes = []

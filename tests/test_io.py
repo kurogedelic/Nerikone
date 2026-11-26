@@ -111,6 +111,16 @@ def test_drawing_views(two):
     assert b"SECTION" in K.export(two, "dxf")
 
 
+def test_dxf_has_dimensions():
+    d = K.Document()
+    d.execute("body.box", {"length": 40, "width": 20, "height": 10})
+    t = K.export(d, "dxf").decode()
+    assert t.count("\nDIMENSIONS\n") == 24  # 6 dimensions x (3 lines or 1 text... 3 lines + 1 text)
+    for label in ("40 mm", "20 mm", "10 mm"):
+        assert f"\n{label}\n" in t
+    assert t.rstrip().endswith("EOF") and t.index("DIMENSIONS") < t.rindex("ENDSEC")
+
+
 @pytest.mark.parametrize("units,k", [("mm", 1), ("cm", 10), ("m", 1000), ("in", 25.4)])
 def test_drawing_sheet_is_true_size(units, k):
     import re

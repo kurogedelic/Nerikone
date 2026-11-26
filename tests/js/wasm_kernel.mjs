@@ -59,6 +59,7 @@ rows=K.measure(d,'parts',{})['parts']; assert rows[0]['qty']==2, rows
 assert K.export(d,'csv').decode().startswith('Item,Qty')`,
   drawing_and_measure: `d=K.Document(); d.set_units('m'); d.execute('body.box',{'length':8,'width':6,'height':3})
 svg=K.export(d,'svg').decode(); assert '8 m' in svg and '<text' in svg, svg[:200]
+dxf=K.export(d,'dxf').decode(); assert 'DIMENSIONS' in dxf and '8 m' in dxf, dxf[-300:]
 m=K.measure(d,'body',{'bodies':['Box1']})['bodies']['Box1']; assert m['size']==[8,6,3] and abs(m['volume']-144)<1e-6, m`,
   import_place: `d=K.Document(); d.execute('body.box',{'at':[10,10,10],'name':'S'}); data=K.export(d,'step')
 e=K.Document(); e.execute('file.import',{'blob':K.add_blob(data),'format':'step','name':'I','place':'ground'})

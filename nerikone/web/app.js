@@ -2511,8 +2511,15 @@ function selectedSegments(f) { // which of the step's segments the selected edge
 // Symbols of a sketch's constraints, on the sketch itself: the step shown in the inspector, at the middle of each segment it constrains.
 const CON_SYM = {horizontal: '—', vertical: '|', parallel: '∥', perpendicular: '⊥', equal: '=', length: '', radius: 'R', angle: '∠', fix: '⚓', x: 'x', y: 'y', distance: '↔'};
 const conLabels = Object.assign(document.createElement('div'), {id: 'conlabels'}); view.append(conLabels);
+const MATE_SYM = {flush: '⊟', align: '≡', concentric: '◎'}, MATE_JA = {flush: '合わせ: 面を接する', align: '合わせ: 面を揃える', concentric: '合わせ: 同軸'};
 function placeConLabels() {
   const f = !S.form && !S.modal && !S.tool ? inspectorFeature() : null;
+  if (f && f.cmd === 'asm.mate' && !f.suppressed && !S.render && f.params.target_at) { // a mate: its symbol where the two faces meet (the target's face)
+    const vr = view.getBoundingClientRect(), sc = screenOf(V(f.params.target_at)), k = f.params.kind || 'flush', off = +f.params.offset || 0;
+    const html = `<div class="clabel" style="left:${(sc.x - vr.left).toFixed(1)}px;top:${(sc.y - vr.top).toFixed(1)}px" data-tip="${esc(MATE_JA[k] || k)}">${MATE_SYM[k] || '⊟'}${off ? ' ' + fmtN(off) : ''}</div>`;
+    if (html !== S.conHtml) { conLabels.innerHTML = html; S.conHtml = html; }
+    return;
+  }
   if (!f || !SKETCH_CMDS.has(f.cmd) || !f.params.constraints?.length || f.suppressed || S.render) { if (conLabels.innerHTML) { conLabels.innerHTML = ''; S.conHtml = ''; } return; }
   const fr = sketchFrame(f), segs = segInfo(f), P = sketchPts(f), vr = view.getBoundingClientRect(), n = P.length;
   const at = (a, b) => fr.o.clone().addScaledVector(fr.u, a).addScaledVector(fr.v, b);
