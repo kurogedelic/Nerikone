@@ -22,6 +22,11 @@ const checks = {
   scad_2d: `src=b'module p(w,h,r){hull(){translate([r,r])circle(r=r);translate([w-r,r])circle(r=r);translate([r,h-r])circle(r=r);translate([w-r,h-r])circle(r=r);}} linear_extrude(height=1) difference(){p(30,10,2);translate([10,5])polygon([[-2,-1],[2,-1],[3,1],[-1,1]]);}'
 d=K.Document(); d.execute('file.import',{'blob':K.add_blob(src),'format':'scad','name':'S'})
 assert len(d.bodies)==1 and 285<next(iter(d.bodies.values())).volume<300`,
+  scad_text: `src=b'linear_extrude(2) text("H", size=7);'
+d=K.Document(); d.execute('file.import',{'blob':K.add_blob(src),'format':'scad','name':'S'})
+v=next(iter(d.bodies.values())).volume; assert abs(v-34)<1e-6, v
+src=b'linear_extrude(1) text("ABCXYZ 0189 %&@", 7);'
+d=K.Document(); d.execute('file.import',{'blob':K.add_blob(src),'format':'scad','name':'S'}); assert len(d.bodies)>=1`,
   scad_import: `source=b'difference(){cube([4,4,4],center=true); sphere(r=1);}'
 d=K.Document(); d.execute('file.import',{'blob':K.add_blob(source),'format':'scad','name':'S'})
 assert len(d.bodies)==1 and abs(next(iter(d.bodies.values())).volume-(64-4*math.pi/3))<1e-4

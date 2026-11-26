@@ -158,7 +158,9 @@ def test_math_and_strings():
 
 @pytest.mark.parametrize("source,why", [
     ("minkowski() { cube(1); sphere(1); }", "not supported"),
-    ('text("x");', "not supported"),
+    ('text("x", spacing=0); ', "positive"),
+    ('linear_extrude(1) text("x", halign="middle");', "halign"),
+    ('linear_extrude(1) text(str("a", 1), 5, direction="up");', "direction"),
     ("cube(1/0);", "finite"),
     ("module m() m(); m();", "too deep"),
     ("function f(x) = f(x + 1); cube(f(0));", "too deep"),
@@ -193,3 +195,30 @@ def test_an_import_is_stored_and_rebuilt_with_its_files():
     restored = K.Document()
     restored.load_json(json.loads(json.dumps(doc.to_json())))
     assert not restored.errors and vols(bundle) == [27.0]
+
+
+def _vols(source):
+    return sorted(round(K.inspect_body(b)["volume"], 4) for b in load(source).bodies.values())
+
+
+def test_text_letters_have_the_size_of_the_pixel_grid():
+    # an H of size 7 is 17 squares of 1 x 1 (two stems of 7 and a bar of 3); extruded by 2
+    assert _vols('linear_extrude(2) text("H", size=7);') == [34.0]
+    # a lower-case letter draws as the capital; a space only moves on
+    assert _vols('linear_extrude(2) text("h", size=7);') == [34.0]
+    assert _vols('linear_extrude(2) text(" H", size=7);') == [34.0]
+
+
+def test_text_alignment_and_every_letter():
+    doc = load('linear_extrude(1) text("AB", size=7, halign="center", valign="center");')
+    bb = K.inspect_body(next(iter(doc.bodies.values())))["bbox"]
+    assert bb[0][0] == pytest.approx(-5.5) and bb[1][0] == pytest.approx(5.5)
+    assert bb[0][1] == pytest.approx(-3.5) and bb[1][1] == pytest.approx(3.5)
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-_+=!?:;/()[]{}<>*#%&@$|~^`"
+    assert len(_vols(f'linear_extrude(1) text("{letters}", 7);')) >= 1  # none of them fails to build
+
+
+def test_text_unknown_characters_and_limit():
+    assert _vols('linear_extrude(2) text("\u00e9", size=7);') == _vols('linear_extrude(2) text("?", size=7);')
+    with pytest.raises(K.BadParams):
+        load('linear_extrude(1) text("' + "A" * 501 + '", 5);')

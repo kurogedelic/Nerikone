@@ -703,6 +703,119 @@ def hull3d(points):
     return [pts[i] for i in used], [(index[a], index[b], index[c]) for a, b, c in faces]
 
 
+# ---------------------------------------------------------------- text(): a small built-in font
+# Our own 5 x 7 pixel letters (capitals, digits, punctuation; lower case draws as capitals). Rows run top to bottom.
+_F = {}
+for _k, _v in {
+    "A": ".###. #...# #...# ##### #...# #...# #...#", "B": "####. #...# #...# ####. #...# #...# ####.",
+    "C": ".#### #.... #.... #.... #.... #.... .####", "D": "####. #...# #...# #...# #...# #...# ####.",
+    "E": "##### #.... #.... ####. #.... #.... #####", "F": "##### #.... #.... ####. #.... #.... #....",
+    "G": ".#### #.... #.... #.### #...# #...# .###.", "H": "#...# #...# #...# ##### #...# #...# #...#",
+    "I": "##### ..#.. ..#.. ..#.. ..#.. ..#.. #####", "J": "..### ...#. ...#. ...#. ...#. #..#. .##..",
+    "K": "#...# #..#. #.#.. ##... #.#.. #..#. #...#", "L": "#.... #.... #.... #.... #.... #.... #####",
+    "M": "#...# ##.## #.#.# #.#.# #...# #...# #...#", "N": "#...# ##..# #.#.# #..## #...# #...# #...#",
+    "O": ".###. #...# #...# #...# #...# #...# .###.", "P": "####. #...# #...# ####. #.... #.... #....",
+    "Q": ".###. #...# #...# #...# #.#.# #..#. .##.#", "R": "####. #...# #...# ####. #.#.. #..#. #...#",
+    "S": ".#### #.... #.... .###. ....# ....# ####.", "T": "##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..",
+    "U": "#...# #...# #...# #...# #...# #...# .###.", "V": "#...# #...# #...# #...# #...# .#.#. ..#..",
+    "W": "#...# #...# #...# #.#.# #.#.# ##.## #...#", "X": "#...# #...# .#.#. ..#.. .#.#. #...# #...#",
+    "Y": "#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..", "Z": "##### ....# ...#. ..#.. .#... #.... #####",
+    "0": ".###. #...# #..## #.#.# ##..# #...# .###.", "1": "..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.",
+    "2": ".###. #...# ....# ...#. ..#.. .#... #####", "3": "####. ....# ....# .###. ....# ....# ####.",
+    "4": "...#. ..##. .#.#. #..#. ##### ...#. ...#.", "5": "##### #.... ####. ....# ....# #...# .###.",
+    "6": "..##. .#... #.... ####. #...# #...# .###.", "7": "##### ....# ...#. ..#.. .#... .#... .#...",
+    "8": ".###. #...# #...# .###. #...# #...# .###.", "9": ".###. #...# #...# .#### ....# ...#. .##..",
+    ".": "..... ..... ..... ..... ..... ..... ..#..", ",": "..... ..... ..... ..... ..#.. ..#.. .#...",
+    "-": "..... ..... ..... ##### ..... ..... .....", "_": "..... ..... ..... ..... ..... ..... #####",
+    "+": "..... ..... ..#.. ##### ..#.. ..... .....", "=": "..... ..... ##### ..... ##### ..... .....",
+    "!": "..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..", "?": ".###. #...# ....# ...#. ..#.. ..... ..#..",
+    ":": "..... ..#.. ..... ..... ..#.. ..... .....", ";": "..... ..#.. ..... ..... ..#.. ..#.. .#...",
+    "/": "....# ....# ...#. ..#.. .#... #.... #....", "\\": "#.... #.... .#... ..#.. ...#. ....# ....#",
+    "(": "...#. ..#.. .#... .#... .#... ..#.. ...#.", ")": ".#... ..#.. ...#. ...#. ...#. ..#.. .#...",
+    "[": ".###. .#... .#... .#... .#... .#... .###.", "]": ".###. ...#. ...#. ...#. ...#. ...#. .###.",
+    "{": "..##. ..#.. ..#.. .#... ..#.. ..#.. ..##.", "}": ".##.. ..#.. ..#.. ...#. ..#.. ..#.. .##..",
+    "<": "...#. ..#.. .#... #.... .#... ..#.. ...#.", ">": ".#... ..#.. ...#. ....# ...#. ..#.. .#...",
+    "*": "..... #.#.# .###. ..#.. .###. #.#.# .....", "#": "..... .#.#. ##### .#.#. ##### .#.#. .....",
+    "'": "..#.. ..#.. ..... ..... ..... ..... .....", '"': ".#.#. .#.#. ..... ..... ..... ..... .....",
+    "%": "##..# ##..# ...#. ..#.. .#... #..## #..##", "&": ".##.. #..#. #.#.. .#... #.#.# #..#. .##.#",
+    "@": ".###. #...# #.### #.#.# #.### #.... .###.", "$": "..#.. .#### #.#.. .###. ..#.# ####. ..#..",
+    "|": "..#.. ..#.. ..#.. ..#.. ..#.. ..#.. ..#..", "~": "..... ..... .#... #.#.# ...#. ..... .....",
+    "^": "..#.. .#.#. #...# ..... ..... ..... .....", "`": ".#... ..#.. ..... ..... ..... ..... .....",
+    " ": ". . . . . . .",
+}.items():
+    _F[_k] = _v.split()
+_GLYPH_LOOPS = {}
+
+
+def _glyph_loops(ch):
+    """The outline loops (lists of corners, y up, in cell units) of one letter: [(outer, [holes])...]."""
+    if ch in _GLYPH_LOOPS:
+        return _GLYPH_LOOPS[ch]
+    rows = _F.get(ch.upper()) or _F["?"]
+    cells = {(x, 6 - r) for r, row in enumerate(rows) for x, c in enumerate(row) if c == "#"}
+    # two squares meeting only at a corner would split the letter: fill in the outer one of the two squares between them
+    for _ in range(12):
+        fixed = False
+        for (x, y) in sorted(cells):
+            for dx in (1, -1):
+                if (x + dx, y + 1) in cells and (x + dx, y) not in cells and (x, y + 1) not in cells:
+                    fill = max(((x + dx, y), (x, y + 1)), key=lambda c: (c[0] - 2) ** 2 + (c[1] - 3) ** 2)
+                    cells.add(fill)
+                    fixed = True
+        if not fixed:
+            break
+    edges = {}
+
+    def add(a, b):
+        if a in edges.get(b, ()):  # the neighbouring cell's opposite edge cancels it
+            edges[b].remove(a)
+        else:
+            edges.setdefault(a, []).append(b)
+    for x, y in sorted(cells):
+        add((x, y), (x + 1, y)); add((x + 1, y), (x + 1, y + 1)); add((x + 1, y + 1), (x, y + 1)); add((x, y + 1), (x, y))
+    loops = []
+    while True:
+        start = next(((a, bs[0]) for a, bs in edges.items() if bs), None)
+        if not start:
+            break
+        a, b = start
+        edges[a].remove(b)
+        loop = [a]
+        while b != loop[0]:
+            loop.append(b)
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            outs = edges.get(b, [])
+            # turn right first, then straight, then left: a corner touch splits into two shapes
+            pref = {(dy, -dx): 0, (dx, dy): 1, (-dy, dx): 2}
+            nxt = min(outs, key=lambda o: pref.get((o[0] - b[0], o[1] - b[1]), 3))
+            edges[b].remove(nxt)
+            a, b = b, nxt
+        # drop corners that lie on a straight run
+        clean = [q for i, q in enumerate(loop) if (q[0] - loop[i - 1][0]) * (loop[(i + 1) % len(loop)][1] - q[1]) != (q[1] - loop[i - 1][1]) * (loop[(i + 1) % len(loop)][0] - q[0])]
+        loops.append(clean)
+
+    def area(lp):
+        return sum(lp[i][0] * lp[(i + 1) % len(lp)][1] - lp[(i + 1) % len(lp)][0] * lp[i][1] for i in range(len(lp))) / 2
+
+    def inside(pt, lp):
+        n, c = len(lp), False
+        for i in range(n):
+            (x1, y1), (x2, y2) = lp[i], lp[(i + 1) % n]
+            if (y1 > pt[1]) != (y2 > pt[1]) and pt[0] < (x2 - x1) * (pt[1] - y1) / (y2 - y1) + x1:
+                c = not c
+        return c
+    outers = [[lp, []] for lp in loops if area(lp) > 0]
+    for lp in loops:
+        if area(lp) < 0:
+            mid = ((lp[0][0] + lp[1][0]) / 2 + 1e-3, (lp[0][1] + lp[1][1]) / 2 + 1e-3)
+            for o in outers:
+                if inside(mid, o[0]):
+                    o[1].append(lp)
+                    break
+    _GLYPH_LOOPS[ch] = [(o, h) for o, h in outers]
+    return _GLYPH_LOOPS[ch]
+
+
 class G:
     """One shape: dim 3 (a Part / Shell) or 2 (a Sketch in the XY plane); `meta` remembers upright cylinders for hull."""
     __slots__ = ("dim", "shape", "meta")
@@ -1084,7 +1197,7 @@ class Interp:
                 raise ScadError(f"{name}: {what} must be a list of {'/'.join(map(str, n))} numbers")
             return [num(x, what) for x in v] + [0.0] * (3 - len(v))
 
-        leaf = name in ("cube", "sphere", "cylinder", "circle", "square", "polygon", "polyhedron")
+        leaf = name in ("cube", "sphere", "cylinder", "circle", "square", "polygon", "polyhedron", "text")
         if leaf:
             if child[0] != "empty":
                 raise ScadError(f"{name}: takes no children")
@@ -1130,7 +1243,7 @@ class Interp:
         if name == "rotate_extrude":
             a = arg(["angle", "convexity"])
             return self.rotate_extrude(flat, a, num)
-        if name in ("minkowski", "import", "surface", "text", "projection", "resize", "intersection_for", "render"):
+        if name in ("minkowski", "import", "surface", "projection", "resize", "intersection_for", "render"):
             raise ScadError(f"{name} is not supported yet")
         raise ScadError(f"unknown module {name}")
 
@@ -1174,6 +1287,8 @@ class Interp:
         if name == "polyhedron":
             return [G(3, self.polyhedron(arg, num))]
         self.solids -= 1  # 2D shapes are not solids
+        if name == "text":
+            return self.text(arg, num)
         if name == "circle":
             a = arg(["r", "d"])
             r = num(a["r"], "r", True) if "r" in a else (num(a["d"], "d", True) / 2 if "d" in a else 1.0)
@@ -1202,6 +1317,36 @@ class Interp:
         for hole in loops[1:]:
             shape = _guard(lambda: shape.cut(build(hole)), "polygon")
         return [G(2, shape)]
+
+    def text(self, arg, num):
+        a = arg(["text", "size", "font", "halign", "valign", "spacing", "direction", "language", "script"])
+        t = a.get("text", "")
+        t = t if isinstance(t, str) else _fmt(t)
+        if len(t) > 500:
+            raise ScadError("text: at most 500 characters")
+        size = num(a.get("size", 10), "size", True)
+        spacing = num(a.get("spacing", 1), "spacing", True)
+        if a.get("direction", "ltr") not in ("ltr", "rtl", "ttb", "btt"):
+            raise ScadError("text: unknown direction")
+        cell = size / 7.0
+        width = (6 * spacing * (len(t) - 1) + 5) * cell if t else 0.0
+        ox = {"left": 0.0, "center": -width / 2, "right": -width}.get(a.get("halign", "left"))
+        oy = {"baseline": 0.0, "bottom": 0.0, "top": -size, "center": -size / 2}.get(a.get("valign", "baseline"))
+        if ox is None or oy is None:
+            raise ScadError("text: unknown halign / valign")
+        out = []
+        for i, ch in enumerate(t):
+            x0 = ox + 6 * spacing * i * cell
+            for outer, holes in _glyph_loops(ch):
+                def poly(lp):
+                    return _guard(lambda: sm.Polygon(*[(x0 + x * cell, oy + y * cell) for x, y in lp]), "text")
+                shape = poly(outer)
+                for h in holes:
+                    shape = _guard(lambda: shape.cut(poly(h)), "text")
+                out.append(G(2, shape))
+        if len(out) > 400:
+            raise ScadError("text: too many letters")
+        return out
 
     def polyhedron(self, arg, num):
         a = arg(["points", "faces", "triangles", "convexity"])

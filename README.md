@@ -82,10 +82,10 @@ the document's units (`.scad` coordinates have no declared units). A failed impo
 Supported: numbers, booleans, strings, vectors, ranges, list comprehensions (`for`, `if`, `let`, `each`), the usual operators,
 `function` and `module` (default and named arguments, `children()`), `for` / `if` / `let`, `include` / `use`, math functions
 (`sin cos tan asin acos atan atan2 sqrt abs min max floor ceil round pow exp ln log sign len concat str norm cross search lookup`),
-`cube sphere cylinder` (frustums too) `polyhedron`, `circle square polygon` (with holes), `translate rotate scale mirror multmatrix color`
+`cube sphere cylinder` (frustums too) `polyhedron`, `text` (a small built-in 5 x 7 pixel font: capitals, digits and punctuation, lower case draws as capitals, `font` is ignored; `size` `halign` `valign` `spacing`), `circle square polygon` (with holes), `translate rotate scale mirror multmatrix color`
 (rotations and moves for `multmatrix`), `union difference intersection`, `hull` (2D; 3D by the convex hull of the tessellated shapes,
 exact arcs for upright cylinders of one height), `offset`, `linear_extrude` (height, center), `rotate_extrude`.
 
-Not supported yet: `minkowski`, `text`, `projection`, `resize`, `import`, `surface`, twisted or scaled `linear_extrude`, random
+Not supported yet: `minkowski`, `projection`, `resize`, `import`, `surface`, twisted or scaled `linear_extrude`, random
 numbers, and function literals. Limits: 100 KB per file, 50 files, a step budget and 120 seconds per import. Curved shapes are
 built as exact curved faces rather than the coarse polygons the language's own previews use, so volumes can differ by about 1 %.
